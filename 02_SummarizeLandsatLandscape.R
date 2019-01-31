@@ -41,7 +41,7 @@ cv <- function(x) { ( sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE)  )  }
 # Mean spectral values per site
 # Shannon diversity index and RAO's Q
 # Multidimensional 
-summarize.landscape <- function(ras){
+summarize.landscape <- function(o){
   require(glcm);require(vegan)
   # Source the spectral rao's Q metric
   #source("https://raw.githubusercontent.com/mattmar/spectralrao/master/spectralrao.r")
@@ -53,7 +53,7 @@ summarize.landscape <- function(ras){
                                    indices = c("NDVI","EVI2","NDWI2")
                                    )
   # raster PCA over all bands
-  pc <- RStoolbox::rasterPCA(o)
+  try( pc <- RStoolbox::rasterPCA(o), silent = T )
   
   # Calculate graylevel texture matrix texture
   tex <- glcm(sv$NDVI,window = c(7,7),  shift=list(c(0,1), c(1,1), c(1,0), c(1,-1)),na_opt = "any")
@@ -81,13 +81,17 @@ summarize.landscape <- function(ras){
   rm(band.means,band.cv)
   
   # Add PC results
-  pc.means <- data.frame( t( cellStats( pc$map[[c("PC1","PC2")]],"mean") ) )
-  names(pc.means) <-  paste0(str_to_upper( names(pc.means)[grep("PC",names(pc.means))] ), "_mean")
-  pc.cv <- data.frame( t( apply(values(pc$map[[c("PC1","PC2")]]), 2, cv) ))
-  names(pc.cv) <- paste0(str_to_upper(str_split(names(pc.cv),"_",simplify = T)[,1]), "_cv")
-  
-  out <- data.frame(out, pc.means,pc.cv)
-  rm(pc.means,pc.cv)
+  if(exists("pc")){
+    pc.means <- data.frame( t( cellStats( pc$map[[c("PC1","PC2")]],"mean") ) )
+    names(pc.means) <-  paste0(str_to_upper( names(pc.means)[grep("PC",names(pc.means))] ), "_mean")
+    pc.cv <- data.frame( t( apply(values(pc$map[[c("PC1","PC2")]]), 2, cv) ))
+    names(pc.cv) <- paste0(str_to_upper(str_split(names(pc.cv),"_",simplify = T)[,1]), "_cv")
+    
+    out <- data.frame(out, pc.means,pc.cv)
+    rm(pc.means,pc.cv)
+  } else {
+    out$PC1_mean <- NA; out$PC2_mean <- NA; out$PC1_cv <- NA; out$PC2_cv <- NA; 
+  }
 
   # Add texture results
   tex.mean <- data.frame( t( cellStats( tex[[c("glcm_entropy","glcm_dissimilarity")]] ,"mean") )  )
@@ -154,13 +158,14 @@ for(fname in unique(ll.SS) ){
   study.output <- data.frame() # The output dataframe
   
   # Now for each study site
-  for( site in unique(sub.study$SSBS) ){
+  for( site in as.character( unique(sub.study$SSBS) ) ){
     # Correct special symbols in SSBS name
     site <- sub("/","_",site)
     if( file.exists(paste0(outPath,site,".rds")) & !overw) {next()}
     
     myLog("--> ",site)
     sub.site <- subset(sub.study,SSBS == site)
+    if(nrow(sub.site)==0) { next() }
     # Get UTM zone projection
     zone = CRS(paste0("+proj=utm +zone=",latlong2UTMzone(lon = sub.site$Longitude,lat = sub.site$Latitude )," +datum=WGS84 +units=m +no_defs"))
     # Make spatial file
@@ -255,7 +260,23 @@ for(fname in unique(ll.SS) ){
     
     # Calculate landscape statistics at 1000m
     # --- #
+    # Check if bands have no data at all somewhere
+    if( any(is.na(cellStats(o,stat = mean,na.rm=T)) ) ){
+      # Dummy dataset'
+      out1 <- data.frame(
+      "BLUE_mean" = NA, "GREEN_mean" = NA, "RED_mean" = NA, "NIR_mean" = NA,                   
+      "SWIR1_mean"  = NA, "SWIR2_mean" = NA, "LST_mean" = NA, "BLUE_cv" = NA,                    
+      "GREEN_cv" = NA, "RED_cv" = NA, "NIR_cv" = NA,"SWIR1_cv" = NA,                 
+      "SWIR2_cv" = NA, "LST_cv" = NA,"missing"  = 100000, "NDVI_mean" = NA,            
+      "NDVI_cv"   = NA,"EVI2_mean" = NA,  "EVI2_cv" = NA,"NDWI_mean" = NA,                
+      "NDWI_cv"  = NA, "PC1_mean" = NA, "PC2_mean" = NA, "PC1_cv"= NA,                   
+      "PC2_cv"= NA,  "NDVI_glcm_entropy_mean"  = NA,"NDVI_glcm_dissimilarity_mean" = NA, "NDVI_glcm_entropy_cv" = NA,       
+      "NDVI_glcm_dissimilarity_cv" = NA
+    ) 
+    
+    } else {
     out1 <- summarize.landscape(o)
+    }
     out1$scale <- 1000
     # --- #
     
@@ -300,7 +321,7 @@ for(fname in unique(ll.SS) ){
 
 stopImplicitCluster();stop("Finished with real composites!")
 
-# ----------Site composites---------- #
+#### ----------Site composites---------- ####
 # Repeat for the SiteComposites only
 ll <- list.files(extractPath,pattern = "*.tif",full.names = T,ignore.case = T)
 ll <- ll[grep("*aux.xml",ll,invert = T)] # Remove aux.xml 
@@ -309,162 +330,30 @@ ll <- ll[grep("SiteComposite",ll,invert = F)] # Site comps
 ll.SSBS <- str_split(str_split(basename(ll),"-",simplify = T)[,1],"SiteComposite_",simplify = T)[,2]
 ll.SSBS <- str_remove_all(ll.SSBS,"\\.tif")
 
-# Now loop through each study id and build the raster
-for(site in unique(ll.SSBS) ){
-  if( file.exists(paste0(outPath,site,".nc")) & !overw) {print("Already existing...");next()}
-  myLog("--> ",site)
-  sub.site <- subset(predicts,SSBS == site)
-  if(nrow(sub.site)==0) {print("Site not in public PREDICTS dataset");next() }
-  
-  # Get all files with that study name
-  ll.ex <- ll[which(ll.SSBS == site)]
-  ss.path = ll.ex
-  # Get UTM zone projection
-  zone = CRS(paste0("+proj=utm +zone=",latlong2UTMzone(lon = sub.site$Longitude,lat = sub.site$Latitude )," +datum=WGS84 +units=m +no_defs"))
-  # Make spatial file
-  coordinates(sub.site) <- ~Longitude+Latitude
-  proj4string(sub.site) <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
-  # Transform to a metric meter based projection
-  sub.site <- spTransform(sub.site,CRSobj = zone )
-  buf <- rgeos::gBuffer(sub.site,quadsegs = 50,width = buffersize)
-  buf <- spTransform(buf, CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0") )# Transform back
-  suppressWarnings(
-    writeOGR(SpatialPolygonsDataFrame(Sr = buf,data = sub.site@data,match.ID = F),
-             dsn = tempdir,layer = "site",driver = "ESRI Shapefile",overwrite_layer = TRUE)
-  )
-  # Now crop the layer stack
-  o <- gdalwarp(
-    srcfile = ss.path,dstfile = paste0(outPath,site,".tif"),
-    co = "COMPRESS = LZW",output_Raster=TRUE,multi=TRUE,
-    q= T, cutline = paste0(tempdir,"/site.shp"),crop_to_cutline = TRUE,overwrite = TRUE
-  )
-  if(is.null(o)) {stop("Cropped to cutline of site did not work!") }
-  
-  o[o == 0] <- NA # Overwrite NA
-  # Now rename and format and save to spatial-temporal frame
-  names(o) <- nn
-  o <- setZ(o,z = str_split(nn,"_",simplify = T)[,2] ) 
-  
-  if(smoothGapF){
-    require(forecast)
-    newbrick <- list() # Ugly hack to get the order back
-    # Temporally gapfilling 
-    for(b in bands){
-      print(b)
-      sub <- o[[which(str_detect(names(o),b))]]
-      
-      a1 = Sys.time()
-      oo <- foreach(i = 1:nrow(sub),
-                    .combine='rbind', 
-                    .multicombine =TRUE,
-                    .errorhandling = 'stop',
-                    .packages=c('raster','zoo','lubridate','forecast','stringr'),
-                    .verbose = FALSE) %dopar% {
-                      # Get all values for a specific row
-                      val <- raster::getValues(sub,i)
-                      # Now apply per row and time series
-                      return( 
-                        base::t.default( apply(val, 1, function(y) preparePixel(y,years)  ) )
-                      )
-                    }
-      print( Sys.time()-a1 )
-      sub[] <-oo
-      
-      # Interpolate single missing years
-      sub <- approxNA(sub,NArule = NA)
-      sub <- setZ(sub,z = years ) 
-      
-      newbrick[[b]] <- sub
-    }
-    rm(o) # Delete the original
-    # Reconstruct the stack per year
-    for( y in sort(years)){
-      if(!exists('o')) {
-        o <- brick(
-          newbrick[[bands[1]]][[paste0(bands[1],"_",y)]],
-          newbrick[[bands[2]]][[paste0(bands[2],"_",y)]],
-          newbrick[[bands[3]]][[paste0(bands[3],"_",y)]],
-          newbrick[[bands[4]]][[paste0(bands[4],"_",y)]],
-          newbrick[[bands[5]]][[paste0(bands[5],"_",y)]],
-          newbrick[[bands[6]]][[paste0(bands[6],"_",y)]],
-          newbrick[[bands[7]]][[paste0(bands[7],"_",y)]]
-        )
-      } else {
-        o <- addLayer(o,newbrick[[bands[1]]][[paste0(bands[1],"_",y)]])
-        o <- addLayer(o,newbrick[[bands[2]]][[paste0(bands[2],"_",y)]])
-        o <- addLayer(o,newbrick[[bands[3]]][[paste0(bands[3],"_",y)]])
-        o <- addLayer(o,newbrick[[bands[4]]][[paste0(bands[4],"_",y)]])
-        o <- addLayer(o,newbrick[[bands[5]]][[paste0(bands[5],"_",y)]])
-        o <- addLayer(o,newbrick[[bands[6]]][[paste0(bands[6],"_",y)]])
-        o <- addLayer(o,newbrick[[bands[7]]][[paste0(bands[7],"_",y)]])
-      }
-    }
-    names(o) <- nn
-    o <- setZ(o,z = str_split(nn,"_",simplify = T)[,2] ) 
-  }
-  writeRaster(x = o,
-              paste0(outPath,site,".nc"),
-              format = "CDF",NAflag = -9999,
-              varname = "Surface reflectance",varunit = "bandwith",
-              xname = "Longitude", yname = "Latitude", zname = "Time", zunit = "year",
-              force_v4=TRUE, compression=7,
-              overwrite= TRUE
-  )
-  # Clean up
-  file.remove(paste0(outPath,site,".tif"))
-  try(lapply(list.files(tempdir,pattern = "site",full.names = T), file.remove),silent=TRUE)
-  
-}
-
-doParallel::stopImplicitCluster()
-stop("DONE!")
-
-# ------------------- #
-#### Clip and prepare the predictors ####
-# Do the same for the additional predictors precip, 
-
-pred.names <- c('precip_median','precip_range','elevation','slope')
-
-nn = c(paste0(pred.names[1:2],rep(years,each=2)), c(pred.names[3],pred.names[4]) )
-
-# Load all files
-ll <- list.files(extractPath.Predictors,pattern = "*.tif",full.names = T,ignore.case = T)
-ll <- ll[grep("*aux.xml",ll,invert = T)] # Remove aux.xml jic
-# Get the study names from the files
-ll.SS <- str_split(str_split(basename(ll),"-",simplify = T)[,1],"CompositePred_",simplify = T)[,2]
-ll.SS <- str_remove_all(ll.SS,"\\.tif")
+# Get study ids
+studies <- predicts %>% dplyr::select(SS,SSBS) %>% distinct() %>% dplyr::filter(SSBS %in% unique(ll.SSBS))
 
 registerDoParallel(cores = parallel::detectCores()-2)
+print(paste0("Processing ",n_distinct(studies$SS)," studies per site"))
+
 # Now loop through each study id and build the raster
-for(fname in unique(ll.SS) ){
-  myLog("Processing study: ",fname)
-  # Get Study name from file name
-  sub.study <- subset(predicts,SS ==  fname)
-  if(nrow(sub.study)==0) {print("Study not in public PREDICTS dataset");next() }
-  
-  # Get all files with that study name
-  ll.ex <- ll[which(ll.SS == fname)]
-  
-  if(length(ll.ex)==1){
-    # Build the stack
-    ss <- stack(ll.ex)
-    ss.path = ll.ex
+for(fname in unique(studies$SS) ){
+  if(file.exists( paste0(outPath,str_replace_all(fname," ","_"),".rds") )){
+    print("Study already computed. Skip");next()
   } else {
-    myLog("--- Multiple files. Mosaic stack (VRT)...")
-    o = gdalbuildvrt(ll.ex,output.vrt = paste0(tempdir,"/",fname,".vrt"),verbose = F,overwrite = T)
-    if(!is.null(o)) stop("Mosaicing did not suceed...")
-    ss <- stack(paste0(tempdir,"/",fname,".vrt"))
-    ss.path = paste0(tempdir,"/",fname,".vrt")
+    myLog("Processing study: ",fname)
   }
-  # Correct file names
-  stopifnot(nlayers(ss) == length(nn))
-  names(ss) <- nn
-  
-  # Now for each study
-  for( site in unique(sub.study$SSBS) ){
-    if( file.exists(paste0(outPath.predictors,site,".nc")) & overw) {next()}
-    myLog("--> ",site)
+  sub.study <- subset(predicts,SS == fname)
+  # Save study output  
+  study.output <- data.frame() # The output dataframe
+
+  for(  site in as.character( unique(sub.study$SSBS) )  ){
+    # Get all files with that study name
+    ll.ex <- ll[which(ll.SSBS == site)]
+    if(length(ll.ex)==0) { next()  }
+    ss.path = ll.ex
     sub.site <- subset(sub.study,SSBS == site)
+
     # Get UTM zone projection
     zone = CRS(paste0("+proj=utm +zone=",latlong2UTMzone(lon = sub.site$Longitude,lat = sub.site$Latitude )," +datum=WGS84 +units=m +no_defs"))
     # Make spatial file
@@ -480,35 +369,87 @@ for(fname in unique(ll.SS) ){
     )
     # Now crop the layer stack
     o <- gdalwarp(
-      srcfile = ss.path,dstfile = paste0(outPath.predictors,site,".tif"),
+      srcfile = ss.path,dstfile = paste0(outPath,site,".tif"),
       co = "COMPRESS = LZW",output_Raster=TRUE,multi=TRUE,
       q= T, cutline = paste0(tempdir,"/site.shp"),crop_to_cutline = TRUE,overwrite = TRUE
     )
     if(is.null(o)) {stop("Cropped to cutline of site did not work!") }
+    
+    o[o == 0] <- NA # Overwrite NA
     # Now rename and format and save to spatial-temporal frame
     names(o) <- nn
+    o <- setZ(o,z = str_split(nn,"_",simplify = T)[,2] ) 
     
-    # For all precip layers assign the most common value
-    # Neccessary because of the coarse resolution
-    o.mask <- o$elevation
-    o.mask[o.mask == 0] <- NA
-    for(l in grep('precip',nn) ){
-      o[[l]][] <- cellStats(o[[l]],Mode)
-      o[[l]] <- raster::mask(o[[l]],o.mask,updatevalue=NA)
+    # Now subset to target year and summarize
+    # Use only the year of sampling
+    o <- o[[grep(sub.site$midyear,names(o))]]   
+    o <- o * 0.0001# Correct unit
+    o[o > 1] <- NA # Reflectance should be below and above this value. Thus set to NA
+    
+    # Calculate landscape statistics at 1000m
+    # --- #
+    # Check if bands have no data at all somewhere
+    if( any(is.na(cellStats(o,stat = mean,na.rm=T)) ) ){
+      # Dummy dataset'
+      out1 <- data.frame(
+        "BLUE_mean" = NA, "GREEN_mean" = NA, "RED_mean" = NA, "NIR_mean" = NA,                   
+        "SWIR1_mean"  = NA, "SWIR2_mean" = NA, "LST_mean" = NA, "BLUE_cv" = NA,                    
+        "GREEN_cv" = NA, "RED_cv" = NA, "NIR_cv" = NA,"SWIR1_cv" = NA,                 
+        "SWIR2_cv" = NA, "LST_cv" = NA,"missing"  = 100000, "NDVI_mean" = NA,            
+        "NDVI_cv"   = NA,"EVI2_mean" = NA,  "EVI2_cv" = NA,"NDWI_mean" = NA,                
+        "NDWI_cv"  = NA, "PC1_mean" = NA, "PC2_mean" = NA, "PC1_cv"= NA,                   
+        "PC2_cv"= NA,  "NDVI_glcm_entropy_mean"  = NA,"NDVI_glcm_dissimilarity_mean" = NA, "NDVI_glcm_entropy_cv" = NA,       
+        "NDVI_glcm_dissimilarity_cv" = NA
+      ) 
+      
+    } else {
+      out1 <- summarize.landscape(o)
     }
+    out1$scale <- 1000
+    # --- #
     
-    writeRaster(x = o,
-                paste0(outPath.predictors,site,".nc"),
-                format = "CDF",NAflag = -9999,
-                varname = "Predictors for stack",varunit = "mm and m",
-                xname = "Longitude", yname = "Latitude", zname = "Time", zunit = "year",
-                force_v4=TRUE, compression=7,
-                overwrite= TRUE
-    )
-    # Clean up
-    file.remove(paste0(outPath.predictors,site,".tif"))
-    try(lapply(list.files(tempdir,pattern = "site",full.names = T), file.remove),silent=TRUE)
+    sub.site <- subset(sub.study,SSBS == site)
+    # Get UTM zone projection
+    zone = CRS(paste0("+proj=utm +zone=",latlong2UTMzone(lon = sub.site$Longitude,lat = sub.site$Latitude )," +datum=WGS84 +units=m +no_defs"))
+    # Make spatial file
+    coordinates(sub.site) <- ~Longitude+Latitude
+    proj4string(sub.site) <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
+    # Transform to a metric meter based projection
+    sub.site <- spTransform(sub.site,CRSobj = zone )
+    buf <- rgeos::gBuffer(sub.site,quadsegs = 50,width = 500)
+    buf <- spTransform(buf, CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0") )# Transform back
+    
+    # At 500 m
+    o <- raster::crop(o,buf);o <- raster::mask(o, buf )
+    # --- #
+    try(out2 <- summarize.landscape(o),silent = T)
+    if(!exists("out2") ){
+      out2 <- out1
+      out2[names(out2)] <- NA
+    }
+    out2$scale <- 500
+    # --- #
+    out <- rbind(out1,out2)
+    out$SS <- as.character( sub.site$SS )
+    out$SSBS <- as.character( sub.site$SSBS )
+    out$startyear <- sub.site$startyear
+    out$midyear <- sub.site$midyear
+    
+    # Combine with previous site estimates
+    study.output <- rbind( study.output, out )
+    rm(out,out1,out2) # Clean up
+    
+    file.remove(paste0(outPath,site,".tif"))
+    suppressMessages( try(lapply(list.files(tempdir,pattern = "site",full.names = T), file.remove),silent=TRUE) )
   }
+  # Save output
+  saveRDS(study.output,file = paste0(outPath,str_replace_all(fname," ","_"),".rds") )
+  
+  # Clean up
+  file.remove(paste0(outPath,site,".tif"))
+  try(lapply(list.files(tempdir,pattern = "site",full.names = T), file.remove),silent=TRUE)
+  
 }
+
 doParallel::stopImplicitCluster()
 stop("DONE!")

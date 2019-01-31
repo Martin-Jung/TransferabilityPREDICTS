@@ -22,8 +22,13 @@ buffersize = 1000 # THe buffer size used
 overw = FALSE # Should new files be created if already existing?
 smoothGapF = TRUE # Should gaps as well as outliers be smoothed
 
+# ---------------------------- #
 # Load 2006 dataset and retain only those with a latitude coordinate
-predicts <- readRDS("../../Data/PREDICTS_v1/sites.rds") %>% dplyr::select(SS,SSBS,Longitude,Latitude,Predominant_land_use,Habitat_as_described,Use_intensity)
+predicts <- readRDS("../../Data/PREDICTS_v1/sites.rds") %>% dplyr::select(SS,SSBS,Longitude,Latitude,
+                                                                          Sample_midpoint,Sample_start_earliest,Sample_end_latest,
+                                                                          Predominant_land_use,Habitat_as_described,Use_intensity)
+predicts$midyear <- lubridate::year(lubridate::ymd(predicts$Sample_midpoint))
+predicts$startyear <- lubridate::year(lubridate::ymd(predicts$Sample_start_earliest))
 predicts <- predicts[which(!is.na(predicts$Latitude)),]
 
 #### LS extraction -- Load and subset a studies raster layer per site #### 
@@ -163,7 +168,9 @@ for(fname in unique(ll.SS) ){
       names(o) <- nn
       o <- setZ(o,z = str_split(nn,"_",simplify = T)[,2] ) 
     }
-    writeRaster(x = o,
+    # Use only the year of sampling
+    o[[grep(sub.site$midyear,names(o))]]    
+    writeRaster(x = o[[grep(sub.site$midyear,names(o))]],
                 paste0(outPath,site,".nc"),
                 format = "CDF",NAflag = -9999,
                 varname = "Surface reflectance",varunit = "bandwith",

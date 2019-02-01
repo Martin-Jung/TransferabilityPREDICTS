@@ -1,4 +1,4 @@
-# Package loading
+5# Package loading
 library(dplyr)
 library(reshape2)
 library(stringr)
@@ -13,6 +13,7 @@ myLog <- function(...) {
 #### Prepare PREDICTS data to be uploaded as G-Fusion table ####
 # Load
 r <- readRDS("../../Data/diversity-2016-02-03-03-37-46.rds") 
+predicts.studies <- readRDS("" )
 r <- DropInvalidMetricsAndMethods(r)
 r <- CorrectSamplingEffort(r)
 sites <-SiteMetrics(diversity=r,

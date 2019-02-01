@@ -12,13 +12,13 @@ myLog <- function(...) {
 #### BRDF Spectral data ####
 myLog("Starting loading extractions")
 # Bind them together
-b1 <- as.data.table(readRDS("Extracts/PREDICTS_center_MCD43A4_1.rds"))
-b2 <- as.data.table(readRDS("Extracts/PREDICTS_center_MCD43A4_2.rds"))
-b3 <- as.data.table(readRDS("Extracts/PREDICTS_center_MCD43A4_3.rds"))
-b4 <- as.data.table(readRDS("Extracts/PREDICTS_center_MCD43A4_4.rds"))
-b5 <- as.data.table(readRDS("Extracts/PREDICTS_center_MCD43A4_5.rds"))
-b6 <- as.data.table(readRDS("Extracts/PREDICTS_center_MCD43A4_6.rds"))
-b7 <- as.data.table(readRDS("Extracts/PREDICTS_center_MCD43A4_7.rds"))
+b1 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_1.rds"))
+b2 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_2.rds"))
+b3 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_3.rds"))
+b4 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_4.rds"))
+b5 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_5.rds"))
+b6 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_6.rds"))
+b7 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_7.rds"))
 
 sites <- readRDS("sites_center.rds")
 

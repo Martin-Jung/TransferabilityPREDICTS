@@ -1,4 +1,4 @@
-5# Package loading
+# Package loading
 library(dplyr)
 library(reshape2)
 library(stringr)
@@ -6,77 +6,32 @@ library(lubridate)
 library(tidyr)
 # Custom packages
 library(roquefort)
-library(marfunky)
+library(yarg)
+source("000_HelperFunction.R")
 myLog <- function(...) {
   cat(paste0("[Spectral] ", Sys.time(), " | ", ..., "\n"))
 }
 #### Prepare PREDICTS data to be uploaded as G-Fusion table ####
 # Load
-r <- readRDS("../../Data/diversity-2016-02-03-03-37-46.rds") 
-predicts.studies <- readRDS("" )
-r <- DropInvalidMetricsAndMethods(r)
-r <- CorrectSamplingEffort(r)
-sites <-SiteMetrics(diversity=r,
-                        extra.cols=c("SSB","SSBS","Longitude","Latitude","Sample_start_earliest","Sample_end_latest",
-                                     "Ecoregion","Biome","Country","UN_subregion","Site_name",
-                                     "Sampling_method","Study_common_taxon","Max_linear_extent","Coordinates_precision_metres"
-                                     ))
-rm(r)
-# Get suitable studies
-sites <- sites %>% 
-  mutate(startyear = year(ymd(Sample_start_earliest)), # Which year did sampling commense
-         endyear = year(ymd(Sample_end_latest))) %>% # When did it end?
-  dplyr::filter(startyear >= 2000) %>%  #Kickout everything that started before 2000
-  distinct() # Get Unique fields
-# How about coordinate precision ?
-summary(sites$Coordinates_precision_metres)
+database <- readRDS("../../Data/PREDICTS_v1/database.rds") 
+sites <- readRDS("../../Data/PREDICTS_v1/sites.rds")
 
-# Get distinct 500m grid
-library(rgdal)
-library(sp)
-library(raster)
-library("snow")
-library("parallel")
-sp = subset(sites,select = c("SSBS","Longitude","Latitude"))
-# Make spatial file
-coordinates(sp) <- ~Longitude+Latitude
-proj4string(sp) <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
+# Calculate sitebased biodiversity metrics
+diversity <- database %>% group_by(SS,SSBS) %>% 
+  summarise(
+    Species.richness = n_distinct(Best_guess_binomial),
+    Total.abundance = sum(Measurement, na.rm = TRUE ),
+    Total.abundance.effcor = sum(Effort_corrected_measurement, na.rm = TRUE )
+  )
 
-# read in MCD12Q1 for fishnet proxy
-ref <- raster("R:/ecocon_d/shared/GIS_LandCover/MODIS_MCD12Q1/MCD12Q1_2001.tif")
-# Harmonize projections
-if( proj4string(sp) != proj4string(ref) ){
-  warning("Projection of input files is not equal. Will try to reproject point file")
-  if(is.na(proj4string(ref))) stop("CRS of RasterLayer must be set!")
-  sp <- spTransform(sp,CRSobj = CRS(proj4string(ref)))
-}
+# Sorensen dissimilarity
+dis.sor <- CompDissim2(database,"SorVeg",binary = T)
+dis.bc <- database %>% mutate(Measurement = Effort_corrected_measurement) %>% CompDissim2(.,"BCVeg",binary = F)
 
-### Make cluster object
-beginCluster( detectCores()-2 ) # leave two core for background processes
-#extraxt point with df
-df <- raster::extract(ref,sp,method="simple",cellnumbers=T,df=T)
-endCluster()
-R.utils::detachPackage("raster")
-# Append to data
-sites$cells <- df$cells 
-sites$SameCellokay <- FALSE
-# Now loop through all studies 
-for( study in unique(sites$SS)) {
-  print(study)
-  sub <- subset(sites,SS==study)
-  # Filter those studies out which fall into only one MODIS 500m cell
-  check = colSums(with(sub,table(SSS,cells)))
-  if(length(check)>1){
-    sites$SameCellokay[which(sites$SS==study & sites$cells %in% names(check))] <- TRUE
-  } else {
-    print(paste("All sites of",study,"fall within one 500m cell -> Exclude"))
-  }
-}
+sites %>% 
 
-# Then filter out those which only fall in one cell
-sites <- sites %>% dplyr::filter(SameCellokay ==TRUE)
-
-# Grouping correction
+# ---- # 
+# Taxonomic grouping and recategorization
 sites$TGrouping <- as.character(sites$Study_common_taxon)
 sites$TGrouping[grep("Hymenoptera",x = sites$TGrouping,ignore.case = T)] <- "Invertebrates"
 sites$TGrouping[grep("Insecta",x = sites$TGrouping,ignore.case = T)]<- "Invertebrates"

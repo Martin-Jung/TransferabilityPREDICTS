@@ -17,18 +17,15 @@ database <- readRDS("../../Data/PREDICTS_v1/database.rds")
 sites <- readRDS("../../Data/PREDICTS_v1/sites.rds")
 
 # Calculate sitebased biodiversity metrics
-diversity <- database %>% group_by(SS,SSBS) %>% 
-  summarise(
-    Species.richness = n_distinct(Best_guess_binomial),
-    Total.abundance = sum(Measurement, na.rm = TRUE ),
-    Total.abundance.effcor = sum(Effort_corrected_measurement, na.rm = TRUE )
-  )
+diversity <- database %>% dplyr::filter(!is.na(Sampling_effort)) %>%  # Remove sites with no recorded sampling effort
+  mutate(SSS = droplevels(SSS)) %>% 
+  # Use the effort corrected abundance as measurement following Newbold et al. (2014)
+  dplyr::select(-Measurement) %>% dplyr::rename(Measurement = "Effort_corrected_measurement") %>% 
+  SiteMetrics(diversity = ., extra.cols=c("SS","SSS","SSB","SSBS"), sites.are.unique = T, srEstimators = F)
 
 # Sorensen dissimilarity
 dis.sor <- CompDissim2(database,"SorVeg",binary = T)
 dis.bc <- database %>% mutate(Measurement = Effort_corrected_measurement) %>% CompDissim2(.,"BCVeg",binary = F)
-
-sites %>% 
 
 # ---- # 
 # Taxonomic grouping and recategorization
@@ -104,8 +101,29 @@ sites$TGrouping[grep("Lecanoromycetes",x = sites$TGrouping,ignore.case = T)] <- 
 sites$TGrouping[grep("Clethrionomys gapperi",x = sites$TGrouping,ignore.case = T)] <- "Mammalia"
 sites$TGrouping[grep("Passeriformes",x = sites$TGrouping,ignore.case = T)] <- "Aves"
 sites$TGrouping[grep("Dipteryx oleifera",x = sites$TGrouping,ignore.case = T)] <- "Plantae"
-unique(sites$TGrouping)
+sites$TGrouping[grep("Diprotodontia",x = sites$TGrouping,ignore.case = T)] <- "Mammalia"
+sites$TGrouping[grep("Nematoda",x = sites$TGrouping,ignore.case = T)] <- "Invertebrates"
+sites$TGrouping[grep("Glomeromycetes",x = sites$TGrouping,ignore.case = T)] <- "Fungi"
+sites$TGrouping[grep("Strabomantidae",x = sites$TGrouping,ignore.case = T)] <- "Amphibia"
+# Assign those in other
+#unique(sites$Higher_taxa[which(sites$TGrouping == "Other")])
+sites$TGrouping[ intersect( grep("Mammalia",x = sites$Higher_taxa,ignore.case = T), which(sites$TGrouping=="Other") )] <- "Mammalia"
+sites$TGrouping[ intersect( grep("Coleoptera",x = sites$Higher_taxa,ignore.case = T), which(sites$TGrouping=="Other") )] <- "Invertebrates"
+sites$TGrouping[ intersect( grep("Nematoda",x = sites$Higher_taxa,ignore.case = T), which(sites$TGrouping=="Other") )] <- "Invertebrates"
+sites$TGrouping[ intersect( grep("Annelida",x = sites$Higher_taxa,ignore.case = T), which(sites$TGrouping=="Other") )] <- "Invertebrates"
+sites$TGrouping[ intersect( grep("Aves",x = sites$Higher_taxa,ignore.case = T), which(sites$TGrouping=="Other") )] <- "Aves"
+sites$TGrouping[ intersect( grep("Arachnida",x = sites$Higher_taxa,ignore.case = T), which(sites$TGrouping=="Other") )] <- "Invertebrates"
+sites$TGrouping[ intersect( grep("Liliopsida,Magnoliopsida,Polypodiopsida",x = sites$Higher_taxa,ignore.case = T), which(sites$TGrouping=="Other") )] <- "Plantae"
+sites$TGrouping[ intersect( grep("Liliopsida,Lycopodiopsida,Magnoliopsida,Polypodiopsida",x = sites$Higher_taxa,ignore.case = T), which(sites$TGrouping=="Other") )] <- "Plantae"
+sites$TGrouping[ intersect( grep("Bryophyta,Liliopsida,Magnoliopsida,Pinopsida,Polypodiopsida",x = sites$Higher_taxa,ignore.case = T), which(sites$TGrouping=="Other") )] <- "Plantae"
+sites$TGrouping[ intersect( grep("Equisetopsida,Liliopsida,Magnoliopsida,Pinopsida,Polypodiopsida",x = sites$Higher_taxa,ignore.case = T), which(sites$TGrouping=="Other") )] <- "Plantae"
+sites$TGrouping[ intersect( grep(",Ascomycota,Basidiomycota,Mycetozoa",x = sites$Higher_taxa,ignore.case = T), which(sites$TGrouping=="Other") )] <- "Fungi"
+#table(sites$TGrouping)
 
+# The rest do not have a clear association to a single higher group and will be removed
+sites <- sites %>% dplyr::filter(TGrouping != "Other")
+
+#### Sampling extent interpolation ####
 # - # 
 d <- sites
 temp <- d %>% dplyr::select(Max_linear_extent,Sampling_method,Study_common_taxon) %>% 

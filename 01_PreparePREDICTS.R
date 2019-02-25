@@ -21,7 +21,7 @@ diversity <- database %>% dplyr::filter(!is.na(Sampling_effort)) %>%  # Remove s
   mutate(SSS = droplevels(SSS)) %>% 
   # Use the effort corrected abundance as measurement following Newbold et al. (2014)
   dplyr::select(-Measurement) %>% dplyr::rename(Measurement = "Effort_corrected_measurement") %>% 
-  SiteMetrics(diversity = ., extra.cols=c("SS","SSS","SSB","SSBS"), sites.are.unique = T, srEstimators = F)
+  SiteMetrics(diversity = ., extra.cols=c("SSBS"), sites.are.unique = T, srEstimators = T)
 
 # Sorensen dissimilarity
 dis.sor <- CompDissim2(database,"SorVeg",binary = T)
@@ -123,37 +123,51 @@ sites$TGrouping[ intersect( grep(",Ascomycota,Basidiomycota,Mycetozoa",x = sites
 # The rest do not have a clear association to a single higher group and will be removed
 sites <- sites %>% dplyr::filter(TGrouping != "Other")
 
+#### Binning methodologies to ensure compatability  ####
+# A prediction using PREDICTS data only works if study-wise random intercepts are ignored
+
+table(sites$Sampling_method,sites$TGrouping)
+
 #### Sampling extent interpolation ####
 # - # 
 d <- sites
-temp <- d %>% dplyr::select(Max_linear_extent,Sampling_method,Study_common_taxon) %>% 
+d$Max_linear_extent_metres_predicted <- is.na(d$Max_linear_extent_metres) # template column
+temp <- d %>% dplyr::select(Max_linear_extent_metres,Sampling_method,Study_common_taxon) %>% 
   group_by(Study_common_taxon,Sampling_method) %>% 
-  summarise(MLE_avg = mean(Max_linear_extent,na.rm=T))
+  summarise(MLE_avg = mean(Max_linear_extent_metres,na.rm=T))
 d <- left_join(d,temp) # Join back
 # Insert where empty
-d$Max_linear_extent <- ifelse(is.na(d$Max_linear_extent),d$MLE_avg,d$Max_linear_extent)
+d$Max_linear_extent_metres <- ifelse(is.na(d$Max_linear_extent_metres),d$MLE_avg,d$Max_linear_extent_metres)
 d$MLE_avg <- NULL # Kickout the previously calc. average
 # Then check again this time with Higher Taxa at the remaining empty values
-temp <- d %>% dplyr::select(Max_linear_extent,Sampling_method,TGrouping) %>% 
+temp <- d %>% dplyr::select(Max_linear_extent_metres,Sampling_method,TGrouping) %>% 
   group_by(TGrouping,Sampling_method) %>% 
-  summarise(MLE_avg = mean(Max_linear_extent,na.rm=T))
+  summarise(MLE_avg = mean(Max_linear_extent_metres,na.rm=T))
 d <- left_join(d,temp)
-d$Max_linear_extent <- ifelse(is.na(d$Max_linear_extent),d$MLE_avg,d$Max_linear_extent)
+d$Max_linear_extent_metres <- ifelse(is.na(d$Max_linear_extent_metres),d$MLE_avg,d$Max_linear_extent_metres)
 d$MLE_avg <- NULL # Kickout the previously calc. average
 # Last try
-temp <- d %>% dplyr::select(Max_linear_extent,Sampling_method,Study_common_taxon) %>% 
+temp <- d %>% dplyr::select(Max_linear_extent_metres,Sampling_method,Study_common_taxon) %>% 
   group_by(Study_common_taxon) %>% 
-  summarise(MLE_avg = mean(Max_linear_extent,na.rm=T))
+  summarise(MLE_avg = mean(Max_linear_extent_metres,na.rm=T))
 d <- left_join(d,temp)
-d$Max_linear_extent <- ifelse(is.na(d$Max_linear_extent),d$MLE_avg,d$Max_linear_extent)
+d$Max_linear_extent_metres <- ifelse(is.na(d$Max_linear_extent_metres),d$MLE_avg,d$Max_linear_extent_metres)
 d$MLE_avg <- NULL # Kickout the previously calc. average
 rm(temp)
 
-d <- subset(d,!is.na(d$Max_linear_extent))
+#d <- subset(d,!is.na(d$Max_linear_extent))
 # Kickout extreme outliers
 # 95%  1414.214
-d <- subset(d,Max_linear_extent <= quantile(d$Max_linear_extent,probs = .95,na.rm = T))
+#d <- subset(d,Max_linear_extent <= quantile(d$Max_linear_extent,probs = .95,na.rm = T))
 
-# Save finall site scores
-saveRDS(d,"sites_center.rds")
+#### Join with biodiversity estimates ####
 
+# Remove columns present in both dataframes
+d <- d %>% dplyr::select(-Study_number,-Study_name,-Diversity_metric_type,-Site_number,-Site_name,-Block,-Use_intensity,
+                         -Sample_start_earliest,-Sample_end_latest, -Longitude, -Latitude)
+d <- left_join(d,diversity,by = c("Source_ID","SS","SSS","SSBS"))
+
+# Save final site scores
+saveRDS(d,"sites_diversity.rds")
+saveRDS(dis.sor,"sites_pairwise_sorensen.rds")
+saveRDS(dis.bc,"sites_pairwise_bc.rds")

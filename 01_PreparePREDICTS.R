@@ -167,7 +167,17 @@ d <- d %>% dplyr::select(-Study_number,-Study_name,-Diversity_metric_type,-Site_
                          -Sample_start_earliest,-Sample_end_latest, -Longitude, -Latitude)
 d <- left_join(d,diversity,by = c("Source_ID","SS","SSS","SSBS"))
 
+# Remove those without coordinates
+d <- d[-which(is.na(d$Longitude)),]
+
 # Save final site scores
 saveRDS(d,"sites_diversity.rds")
 saveRDS(dis.sor,"sites_pairwise_sorensen.rds")
 saveRDS(dis.bc,"sites_pairwise_bc.rds")
+
+# Save a spatial file
+d <- readRDS("sites_diversity.rds") %>% dplyr::select(SSBS,Longitude,Latitude)
+library(sp);library(plotKML);library(rgdal)
+coordinates(d) <- ~Longitude + Latitude
+proj4string(d) <- "+proj=longlat +datum=WGS84"
+rgdal::writeOGR(d,"sites_diversity.kml",layer = "sites_diversity",driver = "KML")

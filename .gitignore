@@ -38,3 +38,6 @@ rsconnect/
 
 # Literature
 Papers/*.pdf
+
+# Exclude extracts as they are too large for Github (maybe GLS)
+Extracts/*.rds

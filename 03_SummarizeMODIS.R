@@ -5,6 +5,7 @@ library(stringr)
 library(lubridate)
 library(tidyr)
 library(data.table)
+source("000_HelperFunction.R")
 myLog <- function(...) {
   cat(paste0("[Spectral] ", Sys.time(), " | ", ..., "\n"))
 }
@@ -12,22 +13,39 @@ myLog <- function(...) {
 #### BRDF Spectral data ####
 myLog("Starting loading extractions")
 # Bind them together
-b1 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_1.rds"))
-b2 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_2.rds"))
-b3 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_3.rds"))
-b4 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_4.rds"))
-b5 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_5.rds"))
-b6 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_6.rds"))
-b7 <- as.data.table(readRDS("../DONE_P4_TimeSeriesDissim/Extracts/PREDICTS_center_MCD43A4_7.rds"))
-
-sites <- readRDS("sites_center.rds")
+b1 <- readRDS("Extracts/MCD43A4_Band1.rds")
+b2 <- readRDS("Extracts/MCD43A4_Band2.rds")
+b3 <- readRDS("Extracts/MCD43A4_Band3.rds")
+b4 <- readRDS("Extracts/MCD43A4_Band4.rds")
+b5 <- readRDS("Extracts/MCD43A4_Band5.rds")
+b6 <- readRDS("Extracts/MCD43A4_Band6.rds")
+b7 <- readRDS("Extracts/MCD43A4_Band7.rds")
+sites <- readRDS("sites_diversity.rds")
 
 # Get average of band values within times of sampling
-results <- data.frame(SSBS = sites$SSBS,propNA = NA,
-                      BRDF_Band1 = NA,BRDF_Band2 = NA,BRDF_Band3 = NA,BRDF_Band4 = NA,BRDF_Band5 = NA,BRDF_Band6 = NA,BRDF_Band7 = NA,
-                      NDVI = NA, EVI = NA, EVI2 = NA, SAVI = NA,NDWI = NA,
-                      H_sd = NA, H_cdis = NA)
-for(siteid in results$SSBS){
+results <- data.frame(SSBS = character(0),
+                      Sample_midpoint = character(0), # From sites
+                      # For period use 2 different types
+                      # year of midyear of sampling | +/- 1 year around midyyear 
+                      period = character(0), 
+                      propNA = numeric(0), # Missing data
+                      MODIS_version = character(0), # MODIS MCD32A4 version
+                      # Average BRDF and vegetation index measurements
+                      BRDF_Band1_mean = numeric(0), BRDF_Band2_mean = numeric(0), BRDF_Band3_mean = numeric(0),
+                      BRDF_Band4_mean = numeric(0), BRDF_Band5_mean = numeric(0), BRDF_Band6_mean = numeric(0),BRDF_Band7_mean = numeric(0), 
+                      NDVI_mean = numeric(0), NDVI_min = numeric(0),  NDVI_max = numeric(0), NDVI_cv = numeric(0),
+                      EVI_mean = numeric(0), EVI_min = numeric(0),  EVI_max = numeric(0), EVI_cv = numeric(0),
+                      SAVI_mean = numeric(0), SAVI_min = numeric(0),  SAVI_max = numeric(0), SAVI_cv = numeric(0),
+                      NDWI_mean = numeric(0), NDWI_min = numeric(0),  NDWI_max = numeric(0), NDWI_cv = numeric(0),
+                      # Spectral heterogeneity
+                      PCA_BRDF_centroid = numeric(0), # Construct a PCA, calculate centroid within all (1-2) axes
+                      # Spectral variability was then calculated as the mean of the Euclidean distances from the centroid of all principal components for each plot. Oldeland
+                      # Also scale before hand to assess impact
+                      H_sd = numeric(0), H_cdis = numeric(0)
+                      )
+
+
+for(siteid in unique(sites$SSBS)){
   myLog(siteid)
   sub <- subset(sites,SSBS == siteid)
   # Create interval

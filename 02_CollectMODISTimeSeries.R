@@ -6,9 +6,10 @@ library(data.table)
 library(assertthat)
 library(jsonlite)
 source("000_HelperFunction.R")
-
+options(dplyr.show_progress = T)
 # Path to the extracted time seris from Google Earth Engine
-path = "C:/LocalStorage/LocalFolder/PREDICTS_MCDv6"
+#path = "C:/LocalStorage/LocalFolder/PREDICTS_MCDv6"
+path = "/lustre/scratch/lifesci/mj291/PREDICTS_MCDv6"
 
 # The combinations how they were processed in GEE
 year_combinations = c("2000_2006","2006_2012","2012_2014")
@@ -37,13 +38,13 @@ for(b in seq(1,7)){
   
   out <- data.frame()
   
-  r <- readInFormatv2(paste0("Extracts/PREDICTS_center_MCD43A4_Band",b,"_",year_combinations[1],".geojson.json"),idv = "SSBS") %>% mutate(Band = b)
+  r <- readInFormatv2(paste0(path,"/PREDICTS_center_MCD43A4_Band",b,"_",year_combinations[1],".geojson.json"),idv = "SSBS") %>% mutate(Band = b)
   out <- rbind(out, r)
   rm(r);gc() # Clean
-  r <- readInFormatv2(paste0("Extracts/PREDICTS_center_MCD43A4_Band",b,"_",year_combinations[2],".geojson.json"),idv = "SSBS") %>% mutate(Band = b)
+  r <- readInFormatv2(paste0(path,"/PREDICTS_center_MCD43A4_Band",b,"_",year_combinations[2],".geojson.json"),idv = "SSBS") %>% mutate(Band = b)
   out <- rbind(out, r)
   rm(r);gc() # Clean
-  r <- readInFormatv2(paste0("Extracts/PREDICTS_center_MCD43A4_Band",b,"_",year_combinations[3],".geojson.json"),idv = "SSBS") %>% mutate(Band = b)
+  r <- readInFormatv2(paste0(path,"/PREDICTS_center_MCD43A4_Band",b,"_",year_combinations[3],".geojson.json"),idv = "SSBS") %>% mutate(Band = b)
   out <- rbind(out, r)
   rm(r);gc() # Clean
   out <- unique( out )
@@ -52,4 +53,4 @@ for(b in seq(1,7)){
   rm(out)
   myLog("DONE")
 }
-
+stop("Done!")

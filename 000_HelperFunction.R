@@ -73,6 +73,16 @@ describe <- function(x) {Hmisc::describe(x)} # Convenience describe function
 # Not in function
 '%notin%' <- function(x,y)!('%in%'(x,y))
 
+#' Calculates the coeffiecient of variation
+co.var <- function(x,na.rm=T) {
+  if(is.vector(x)){  
+    cv = (100*sd(x,na.rm=na.rm)/mean(x,na.rm=na.rm) )
+  } else {
+    stop("Input is not a vector")
+  }
+  return(cv)
+}
+
 # ---------------------------------------
 
 # Function to isolate stable periods from time series - cpt.varmean

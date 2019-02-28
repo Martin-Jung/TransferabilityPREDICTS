@@ -74,9 +74,9 @@ describe <- function(x) {Hmisc::describe(x)} # Convenience describe function
 '%notin%' <- function(x,y)!('%in%'(x,y))
 
 #' Calculates the coeffiecient of variation
-co.var <- function(x,na.rm=T) {
+co.var <- function(x,na.rm=T,multiplier = 1) {
   if(is.vector(x)){  
-    cv = (100*sd(x,na.rm=na.rm)/mean(x,na.rm=na.rm) )
+    cv = (multiplier * sd(x,na.rm=na.rm)/mean(x,na.rm=na.rm) )
   } else {
     stop("Input is not a vector")
   }

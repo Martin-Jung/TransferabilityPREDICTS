@@ -4,32 +4,38 @@ library(reshape2)
 library(stringr)
 library(lubridate)
 library(tidyr)
+library(tidyverse)
 library(data.table)
+library(parallel)
+library(doParallel)
 source("000_HelperFunction.R")
 myLog <- function(...) {
   cat(paste0("[Spectral] ", Sys.time(), " | ", ..., "\n"))
 }
+# Path to the MODIS BRDF extracts
+path = "/lustre/scratch/lifesci/mj291/PREDICTS_MCDv6"
 
 #### BRDF Spectral data ####
 myLog("Starting loading extractions")
 # Bind them together
-b1 <- readRDS("Extracts/MCD43A4_Band1.rds")
-b2 <- readRDS("Extracts/MCD43A4_Band2.rds")
-b3 <- readRDS("Extracts/MCD43A4_Band3.rds")
-b4 <- readRDS("Extracts/MCD43A4_Band4.rds")
-b5 <- readRDS("Extracts/MCD43A4_Band5.rds")
-b6 <- readRDS("Extracts/MCD43A4_Band6.rds")
-b7 <- readRDS("Extracts/MCD43A4_Band7.rds")
-sites <- readRDS("sites_diversity.rds")
+b1 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band1.rds")) )
+b2 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band2.rds")) )
+b3 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band3.rds")) )
+b4 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band4.rds")) )
+b5 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band5.rds")) )
+b6 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band6.rds")) )
+b7 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band7.rds")) )
+
+sites <- readRDS("sites_diversity.rds") %>% 
+  dplyr::filter( year(Sample_start_earliest) >= 2001 ) # Remove sites from before 2001 as there will be no data from MODIS for this period
 
 # Get average of band values within times of sampling
 results <- data.frame(SSBS = character(0),
-                      Sample_midpoint = character(0), # From sites
                       # For period use 2 different types
-                      # year of midyear of sampling | +/- 1 year around midyyear 
-                      period = character(0), 
-                      propNA = numeric(0), # Missing data
+                      # year of midyear of sampling | startyear
+                      timeperiod = character(0), 
                       MODIS_version = character(0), # MODIS MCD32A4 version
+                      propNA = numeric(0), # Missing data
                       # Average BRDF and vegetation index measurements
                       BRDF_Band1_mean = numeric(0), BRDF_Band2_mean = numeric(0), BRDF_Band3_mean = numeric(0),
                       BRDF_Band4_mean = numeric(0), BRDF_Band5_mean = numeric(0), BRDF_Band6_mean = numeric(0),BRDF_Band7_mean = numeric(0), 
@@ -38,105 +44,141 @@ results <- data.frame(SSBS = character(0),
                       SAVI_mean = numeric(0), SAVI_min = numeric(0),  SAVI_max = numeric(0), SAVI_cv = numeric(0),
                       NDWI_mean = numeric(0), NDWI_min = numeric(0),  NDWI_max = numeric(0), NDWI_cv = numeric(0),
                       # Spectral heterogeneity
-                      PCA_BRDF_centroid = numeric(0), # Construct a PCA, calculate centroid within all (1-2) axes
+                      PCA_BRDF_variance12 = numeric(0),
+                      PCA_BRDF_meancentroid = numeric(0) # Construct a PCA, calculate centroid within all (1-2) axes
                       # Spectral variability was then calculated as the mean of the Euclidean distances from the centroid of all principal components for each plot. Oldeland
-                      # Also scale before hand to assess impact
-                      H_sd = numeric(0), H_cdis = numeric(0)
+                      # Also scale before hand to assess impact?
                       )
 
-
-for(siteid in unique(sites$SSBS)){
+# Execute in parallel if possible
+#for(siteid in unique(sites$SSBS)){
+cl <- parallel::makeCluster( detectCores(), outfile = paste0( round( as.numeric(now()) ) ,"_logfile.txt") )
+doParallel::registerDoParallel(cl)
+result2 <- foreach(siteid =  unique(sites$SSBS),
+               .combine = rbind,
+               .multicombine = FALSE,
+               .errorhandling = 'pass',
+               .packages = c('dplyr','lubridate','data.table'),
+               .verbose = FALSE) %dopar% {
   myLog(siteid)
   sub <- subset(sites,SSBS == siteid)
-  # Create interval
-  i <- interval(sub$Sample_start_earliest, sub$Sample_end_latest)
-  # Subset bands to respective id
-  sub_b1 <- subset(b1,SSBS == siteid)
-  sub_b2 <- subset(b2,SSBS == siteid)
-  sub_b3 <- subset(b3,SSBS == siteid)
-  sub_b4 <- subset(b4,SSBS == siteid)
-  sub_b5 <- subset(b5,SSBS == siteid)
-  sub_b6 <- subset(b6,SSBS == siteid)
-  sub_b7 <- subset(b7,SSBS == siteid)
   
-  # ... that fail
-  sub_b1 <- sub_b1[which(ymd(sub_b1$date) %within% i),]
-  sub_b2 <- sub_b2[which(ymd(sub_b2$date) %within% i),]
-  sub_b3 <- sub_b3[which(ymd(sub_b3$date) %within% i),]
-  sub_b4 <- sub_b4[which(ymd(sub_b4$date) %within% i),]
-  sub_b5 <- sub_b5[which(ymd(sub_b5$date) %within% i),]
-  sub_b6 <- sub_b6[which(ymd(sub_b6$date) %within% i),]
-  sub_b7 <- sub_b7[which(ymd(sub_b7$date) %within% i),]
+  # Subset by id
+  subb_b1 <- subset(b1,SSBS == siteid) # These subsets use the data.table structure first
+  subb_b2 <- subset(b2,SSBS == siteid)
+  subb_b3 <- subset(b3,SSBS == siteid)
+  subb_b4 <- subset(b4,SSBS == siteid)
+  subb_b5 <- subset(b5,SSBS == siteid)
+  subb_b6 <- subset(b6,SSBS == siteid)
+  subb_b7 <- subset(b7,SSBS == siteid)
   
-  # Save output metrics
-  # average bands
-  results$BRDF_Band1[which(results$SSBS==siteid)] <- mean(sub_b1$value,na.rm = T) * 0.0001
-  results$BRDF_Band2[which(results$SSBS==siteid)] <- mean(sub_b2$value,na.rm = T) * 0.0001
-  results$BRDF_Band3[which(results$SSBS==siteid)] <- mean(sub_b3$value,na.rm = T) * 0.0001
-  results$BRDF_Band4[which(results$SSBS==siteid)] <- mean(sub_b4$value,na.rm = T) * 0.0001
-  results$BRDF_Band5[which(results$SSBS==siteid)] <- mean(sub_b5$value,na.rm = T) * 0.0001
-  results$BRDF_Band6[which(results$SSBS==siteid)] <- mean(sub_b6$value,na.rm = T) * 0.0001
-  results$BRDF_Band7[which(results$SSBS==siteid)] <- mean(sub_b7$value,na.rm = T) * 0.0001
-  
-  # Missing values
-  results$propNA[which(results$SSBS==siteid)] <- length(which(is.na(sub_b1$value))) / nrow(sub_b1)
-  
-  ## Metrics
-  # Combine all bands
-  
-  sub_b1 %>% rename(Band1 = value) %>% select(SSBS,variable,Band1)
-  
-  bands <- sub_b1 %>% rename(Band1 = value) %>% select(SSBS,variable,Band1) %>% 
-    left_join(.,(sub_b2 %>% rename(Band2 = value) %>% select(variable,Band2) ),by= c("variable")) %>% 
-    left_join(.,(sub_b3 %>% rename(Band3 = value) %>% select(variable,Band3) ),by= c("variable")) %>% 
-    left_join(.,(sub_b4 %>% rename(Band4 = value) %>% select(variable,Band4) ),by= c("variable")) %>% 
-    left_join(.,(sub_b5 %>% rename(Band5 = value) %>% select(variable,Band5) ),by= c("variable")) %>% 
-    left_join(.,(sub_b6 %>% rename(Band6 = value) %>% select(variable,Band6) ),by= c("variable")) %>% 
-    left_join(.,(sub_b7 %>% rename(Band7 = value) %>% select(variable,Band7) ),by= c("variable"))
-  # Correct values
-  bands[,3:ncol(bands)] <- bands[,3:ncol(bands)] * 0.0001
-  
-  # NDVI
-  # (5-4) / (5+4)
-  bands$NDVI <- (bands$Band2 - bands$Band1) / (bands$Band2 + bands$Band1)
-  results$NDVI[which(results$SSBS==siteid)] <- mean(bands$NDVI,na.rm = T)
-  
-  # EVI
-  # EVI = G * (NIR – RED)/(NIR + C1*RED - C2*BLUE + L))
-  #G – Gain factor
-  #L – Factor for canopy background adjustment
-  #C1, C2: Coefficients for correcting aerosol influences from RED using BLUE
-  #MODIS EVI algorithm: L = 1, G = 2.5, C1 = 6, C2 = 7.5
-  bands$EVI <- 2.5 * ((bands$Band2 - bands$Band1) / (bands$Band2 + 6.0 * bands$Band1 - 7.5 * bands$Band3 + 1.0))
-  results$EVI[which(results$SSBS==siteid)] <- mean(bands$EVI,na.rm = T)
-  
-  # EVI2
-  # Using only two bands without blue
-  bands$EVI2 <- 2.5 * ((bands$Band2 - bands$Band1) / (bands$Band2 + bands$Band1 + 1))
-  results$EVI2[which(results$SSBS==siteid)] <- mean(bands$EVI2,na.rm = T)
-  
-  # SAVI
-  # SAVI = (1 + L) * (NIR – RED)/(NIR + RED + L)
-  bands$SAVI <- (1 + 0.5) * (bands$Band2 - bands$Band1) / (bands$Band2 + bands$Band1 + 0.5)
-  results$SAVI[which(results$SSBS==siteid)] <- mean(bands$SAVI,na.rm = T)
-  
-  # NDWI
-  bands$NDWI <- (bands$Band2 - bands$Band5) / (bands$Band2 + bands$Band5)
-  results$NDWI[which(results$SSBS==siteid)] <- mean(bands$NDWI,na.rm = T)
-  
-  # H_sd
-  # Standard deviation of the first axis of a PCA using all bands
-  mod <- select(bands,Band1:Band7) %>% subset(.,complete.cases(.)) 
-  mod <- try(prcomp(mod),silent = T)
-  if(class(mod)!="try-error") results$H_sd[which(results$SSBS==siteid)] <- mod$sdev[1]
-  
-  # H_cdis
-  # Calculate average distance from the mean of all values
-  bands$mean <- rowMeans(select(bands,Band1:Band7),na.rm = T)
-  results$H_cdis[which(results$SSBS==siteid)] <- mean(rowMeans(abs(select(bands,Band1:Band7) - bands$mean),na.rm = T),na.rm = T)
-  
-  rm(sub_b1,sub_b2,sub_b3,sub_b4,sub_b5,sub_b6,sub_b7,sub,i,bands,mod) # clean up
+  # Do everything within midyear and +/- 1 year
+  for(tp in c("midyear","yearbefore")){
+    print(paste0("--> Processing following interval: ",tp))
+    out <- data.frame(SSBS = as.character( siteid ), timeperiod = tp, MODIS_version = "006") # Output data.frame
+    
+    # Create interval
+    if(tp == "midyear"){
+      i <- interval( lubridate::floor_date(sub$Sample_midpoint,"year"), lubridate::ceiling_date(sub$Sample_midpoint,"year") )
+    } else {
+      i <- interval(sub$Sample_start_earliest - years(1), sub$Sample_start_earliest)
+    }
+    
+    # Subset bands to respective interval
+    sub_b1 <- as.data.frame( subb_b1[which(ymd(subb_b1$date) %within% i),] )
+    sub_b2 <- as.data.frame( subb_b2[which(ymd(subb_b2$date) %within% i),] )
+    sub_b3 <- as.data.frame( subb_b3[which(ymd(subb_b3$date) %within% i),] )
+    sub_b4 <- as.data.frame( subb_b4[which(ymd(subb_b4$date) %within% i),] )
+    sub_b5 <- as.data.frame( subb_b5[which(ymd(subb_b5$date) %within% i),] )
+    sub_b6 <- as.data.frame( subb_b6[which(ymd(subb_b6$date) %within% i),] )
+    sub_b7 <- as.data.frame( subb_b7[which(ymd(subb_b7$date) %within% i),] )
+
+    # ----------------------------- #
+    # Collect and save output metrics
+
+    # Missing values
+    out$propNA <- length(which(is.na(sub_b1$value))) / nrow(sub_b1)
+    
+    # Average bands
+    out$BRDF_Band1_mean <- mean(sub_b1$value,na.rm = T) * 0.0001
+    out$BRDF_Band2_mean <- mean(sub_b2$value,na.rm = T) * 0.0001
+    out$BRDF_Band3_mean <- mean(sub_b3$value,na.rm = T) * 0.0001
+    out$BRDF_Band4_mean <- mean(sub_b4$value,na.rm = T) * 0.0001
+    out$BRDF_Band5_mean <- mean(sub_b5$value,na.rm = T) * 0.0001
+    out$BRDF_Band6_mean <- mean(sub_b6$value,na.rm = T) * 0.0001
+    out$BRDF_Band7_mean <- mean(sub_b7$value,na.rm = T) * 0.0001
+    
+    ## Metrics
+    # Combine all bands
+    bands <- sub_b1 %>% rename(Band1 = value) %>% select(SSBS,date,Band1) %>% 
+      left_join(.,(sub_b2 %>% rename(Band2 = value) %>% select(date,Band2) ),by= c("date")) %>% 
+      left_join(.,(sub_b3 %>% rename(Band3 = value) %>% select(date,Band3) ),by= c("date")) %>% 
+      left_join(.,(sub_b4 %>% rename(Band4 = value) %>% select(date,Band4) ),by= c("date")) %>% 
+      left_join(.,(sub_b5 %>% rename(Band5 = value) %>% select(date,Band5) ),by= c("date")) %>% 
+      left_join(.,(sub_b6 %>% rename(Band6 = value) %>% select(date,Band6) ),by= c("date")) %>% 
+      left_join(.,(sub_b7 %>% rename(Band7 = value) %>% select(date,Band7) ),by= c("date"))
+    
+    # Correct values
+    bands[,3:ncol(bands)] <- bands[,3:ncol(bands)] * 0.0001
+    
+    # NDVI
+    # (5-4) / (5+4)
+    bands$NDVI <- (bands$Band2 - bands$Band1) / (bands$Band2 + bands$Band1)
+    # -> Calc results
+    out$NDVI_mean = mean(bands$NDVI, na.rm = T); out$NDVI_min = min(bands$NDVI, na.rm = T);  out$NDVI_max = max(bands$NDVI,na.rm = T); out$NDVI_cv = co.var(bands$NDVI)
+
+    # EVI
+    # EVI = G * (NIR – RED)/(NIR + C1*RED - C2*BLUE + L))
+    #G – Gain factor
+    #L – Factor for canopy background adjustment
+    #C1, C2: Coefficients for correcting aerosol influences from RED using BLUE
+    #MODIS EVI algorithm: L = 1, G = 2.5, C1 = 6, C2 = 7.5
+    bands$EVI <- 2.5 * ((bands$Band2 - bands$Band1) / (bands$Band2 + 6.0 * bands$Band1 - 7.5 * bands$Band3 + 1.0))
+    # -> Calc results
+    out$EVI_mean = mean(bands$EVI, na.rm = T); out$EVI_min = min(bands$EVI, na.rm = T);  out$EVI_max = max(bands$EVI,na.rm = T); out$EVI_cv = co.var(bands$EVI)
+    
+    # EVI2
+    # Using only two bands without blue
+    bands$EVI2 <- 2.5 * ((bands$Band2 - bands$Band1) / (bands$Band2 + bands$Band1 + 1))
+    # -> Calc results
+    out$EVI2_mean = mean(bands$EVI2, na.rm = T); out$EVI2_min = min(bands$EVI2, na.rm = T);  out$EVI2_max = max(bands$EVI2,na.rm = T); out$EVI2_cv = co.var(bands$EVI2)
+    
+    # SAVI
+    # SAVI = (1 + L) * (NIR – RED)/(NIR + RED + L)
+    bands$SAVI <- (1 + 0.5) * (bands$Band2 - bands$Band1) / (bands$Band2 + bands$Band1 + 0.5)
+    # -> Calc results
+    out$SAVI_mean = mean(bands$SAVI, na.rm = T); out$SAVI_min = min(bands$SAVI, na.rm = T);  out$SAVI_max = max(bands$SAVI,na.rm = T); out$SAVI_cv = co.var(bands$SAVI)
+    
+    # NDWI
+    bands$NDWI <- (bands$Band2 - bands$Band5) / (bands$Band2 + bands$Band5)
+    # -> Calc results
+    out$NDWI_mean = mean(bands$NDWI, na.rm = T); out$NDWI_min = min(bands$NDWI, na.rm = T);  out$NDWI_max = max(bands$NDWI,na.rm = T); out$NDWI_cv = co.var(bands$NDWI)
+    
+    # H_sd
+    # Standard deviation of the first axis of a PCA using all bands
+    mod <- dplyr::select(bands,Band1:Band7) %>% subset(.,complete.cases(.)) 
+    mod <- try(prcomp(mod,scale. = T),silent = T)
+    if(class(mod)!="try-error") {
+      # Calculate centroid 
+      cent <- cbind(cent.PC1 = mean(mod$x[,"PC1"]), cent.PC2 =  mean(mod$x[,"PC2"]) )
+      
+      # Calculate pairwise euclidean distance matrix 
+      d <- as.matrix( dist(rbind(cent, cbind(mod$x[,"PC1"],mod$x[,"PC2"]) ), method = "euclidean") )
+      
+      # Explained variance of first two axes
+      out$PCA_BRDF_variance12 <- sum(summary(mod)$importance[2,1:2])
+      out$PCA_BRDF_meancentroid <- mean( as.vector( as.matrix(d)[2:nrow(d),1] ) )
+      
+      rm(d,cent)
+    } else{
+      out$PCA_BRDF_variance12 <- NA; out$PCA_BRDF_meancentroid <- NA
+    }
+
+    #results <- rbind(results, out)
+    return(out)
+  }
+  rm(sub)
 }
 
 saveRDS(results,"MCD43A4_BRDF_center_computed.rds")
-
+stopCluster(cl)

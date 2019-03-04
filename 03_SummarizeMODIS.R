@@ -99,7 +99,7 @@ results <- data.frame(SSBS = character(0),
 
 # Execute in parallel if possible
 #for(siteid in unique(sites$SSBS)){
-result2 <- foreach(siteid =  unique(sites$SSBS),
+results2 <- foreach(siteid =  unique(sites$SSBS),
                .combine = rbind,
                .multicombine = FALSE,
                .errorhandling = 'pass',
@@ -204,5 +204,5 @@ result2 <- foreach(siteid =  unique(sites$SSBS),
   return(out)
 }
 
-saveRDS(results2,"MCD43A4_BRDF_center_computed.rds")
+saveRDS(results2,paste0("MCD43A4_BRDF_center_computed_",tp,".rds"))
 stopCluster(cl)

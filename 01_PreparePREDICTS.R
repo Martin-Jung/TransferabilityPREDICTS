@@ -4,13 +4,11 @@ library(reshape2)
 library(stringr)
 library(lubridate)
 library(tidyr)
-# Custom packages
-library(roquefort)
-library(yarg)
 source("000_HelperFunction.R")
 myLog <- function(...) {
   cat(paste0("[Spectral] ", Sys.time(), " | ", ..., "\n"))
 }
+
 #### Prepare PREDICTS data to be uploaded as G-Fusion table ####
 # Load
 database <- readRDS("../../Data/PREDICTS_v1/database.rds") 

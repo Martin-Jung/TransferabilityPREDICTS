@@ -1,5 +1,4 @@
 ### Helper functions ####
-library(dplyr)
 # -------------------------------- #
 `%notin%` = function(a, b){!(a %in% b)}
 
@@ -1198,14 +1197,27 @@ stat_n_text <-
                    inherit.aes = inherit.aes, params = params)
   }
 
-#### Do a qucik MapView lookup ####
-spatialLookup <- function(spp){
+#### Do a quick MapView lookup ####
+studysite_map <- function(spp, studywise = FALSE){
+  stopifnot(require(mapview))
+  stopifnot(require(sp))
+  if(studywise){
+    spp <- spp %>% dplyr::select(Longitude,Latitude) %>% 
+      summarise(Longitude = mean(Longitude,na.rm = T), Latitude = mean(Latitude, na.rm = T)) # Simply averaging gives an approx centroid
+  } else { assertthat::assert_that(nrow(spp) == 1,msg = 'More than one site. Set studywise parameter to TRUE') }
+  
   paste0("Coordinates (Lon|Lat): ",spp$Longitude,", ",spp$Latitude)
-  library(mapview)
-  library(sp)
   coordinates(spp) <- ~Longitude + Latitude
   proj4string(spp) <- CRS("+proj=longlat +datum=WGS84")
   mapView(spp) 
+}
+
+# Make a map out of a PREDICTS subset
+subset_map <- function(df){
+  stopifnot(require(sf))
+  stopifnot(require(maps))
+  map()
+  points(df$Latitude~df$Longitude,col='red',pch = 19)
 }
 
 #==============================================================================

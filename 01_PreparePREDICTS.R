@@ -4,15 +4,12 @@ library(reshape2)
 library(stringr)
 library(lubridate)
 library(tidyr)
-source("000_HelperFunction.R")
-myLog <- function(...) {
-  cat(paste0("[Spectral] ", Sys.time(), " | ", ..., "\n"))
-}
+source("00_HelperFunction.R")
 
 #### Prepare PREDICTS data to be uploaded as G-Fusion table ####
 # Load
-database <- readRDS("../../Data/PREDICTS_v1/database.rds") 
-sites <- readRDS("../../Data/PREDICTS_v1/sites.rds")
+database <- readRDS("../../../PhD/Data/PREDICTS_v1/database.rds") 
+sites <- readRDS("../../../PhD/Data/PREDICTS_v1/sites.rds")
 
 # Calculate sitebased biodiversity metrics
 diversity <- database %>% dplyr::filter(!is.na(Sampling_effort)) %>%  # Remove sites with no recorded sampling effort

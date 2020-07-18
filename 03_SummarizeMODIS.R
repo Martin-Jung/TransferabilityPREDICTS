@@ -15,9 +15,12 @@ myLog <- function(...) {
 # Path to the MODIS BRDF extracts
 path = "/lustre/scratch/lifesci/mj291/PREDICTS_MCDv6"
 
-cores = 4  # Number of cores to use
-tp = c("midyear","yearbefore")[1] #interval
+cores = 6  # Number of cores to use
+tp = c("midyear","yearbefore")[2] #interval
+aggregate2month = TRUE # Mean aggregate to months
+gapfill = TRUE # Should missing data be filled?
 
+# ---------------------------- #
 #### BRDF Spectral data ####
 myLog("Starting loading extractions")
 cl <- parallel::makeCluster( cores, outfile = paste0( round( as.numeric(now()) ) ,"_logfile.txt") )
@@ -45,6 +48,14 @@ b5 <- subset(b5,SSBS %in% sites$SSBS)
 b6 <- subset(b6,SSBS %in% sites$SSBS)
 b7 <- subset(b7,SSBS %in% sites$SSBS)
 
+# --- #
+# Eventual gap filling
+# Mean aggregate all time series to monthly steps
+if(aggregate2month){
+  
+}
+
+# --- #
 # Create interval
 interv <- data.frame(SSBS = sites$SSBS)
 if(tp == "midyear"){
@@ -124,7 +135,7 @@ results2 <- foreach(siteid =  unique(sites$SSBS),
   # Collect and save output metrics
 
   # Missing values
-  out$propNA <- length(which(is.na(subb_b1$value))) / nrow(sub_b1)
+  out$propNA <- length(which(is.na(subb_b1$value))) / nrow(subb_b1)
   
   # Average bands
   out$BRDF_Band1_mean <- mean(subb_b1$value,na.rm = T) * 0.0001

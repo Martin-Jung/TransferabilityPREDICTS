@@ -270,7 +270,7 @@ results2 <- foreach(siteid =  unique(sites$SSBS),
     # Calculate centroid 
     cent <- cbind(cent.PC1 = mean(mod$x[,"PC1"]), cent.PC2 =  mean(mod$x[,"PC2"]) )
     # Save the centroid value
-    out$centroid <- cent
+    out$PCA_BRDF_centroid <- cent
     
     # Calculate pairwise euclidean distance matrix 
     d <- as.matrix( dist(rbind(cent, cbind(mod$x[,"PC1"],mod$x[,"PC2"]) ), method = "euclidean") )

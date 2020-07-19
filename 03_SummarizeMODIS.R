@@ -3,6 +3,8 @@ library(dplyr)
 library(reshape2)
 library(stringr)
 library(lubridate)
+library(zoo)
+library(imputeTS)
 library(tidyr)
 library(tidyverse)
 library(data.table)
@@ -11,6 +13,11 @@ library(doParallel)
 source("000_HelperFunction.R")
 myLog <- function(...) {
   cat(paste0("[Spectral] ", Sys.time(), " | ", ..., "\n"))
+}
+trapezoid = function(x, y) 
+{ # computes the integral of y with respect to x using trapezoidal integration. 
+  idx = 2:length(x)
+  return (as.double( (x[idx] - x[idx-1]) %*% (y[idx] + y[idx-1])) / 2)
 }
 # Path to the MODIS BRDF extracts
 path = "/lustre/scratch/lifesci/mj291/PREDICTS_MCDv6"
@@ -35,7 +42,7 @@ b5 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band5.rds")) )
 b6 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band6.rds")) )
 b7 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band7.rds")) )
 
-sites <- readRDS("sites_diversity.rds") %>% 
+sites <- readRDS("resSaves/sites_diversity.rds") %>% 
   dplyr::filter( year(Sample_start_earliest) >= 2001 ) # Remove sites from before 2001 as there will be no data from MODIS for this period
 
 # Initial subsets
@@ -52,7 +59,52 @@ b7 <- subset(b7,SSBS %in% sites$SSBS)
 # Eventual gap filling
 # Mean aggregate all time series to monthly steps
 if(aggregate2month){
-  
+  # Theoretical MODIS monthly measurements
+  modis.full <- zooreg(data=NA,order.by =  as.yearmon(2000 + seq(0, (2016-2000)*12)/12),frequency = 12 ) %>% 
+    as.data.frame() %>% add_rownames('date') %>% rename('value' = '.')
+  # Aggregation function
+  agg <- function(df,modis.full){ df %>% 
+      mutate(date = as.character(as.yearmon(date)) ) %>% 
+      # Those date not present, append
+      bind_rows(., crossing(modis.full,SSBS= df$SSBS, Band = df$Band)) %>% 
+      group_by(SSBS,Band,date) %>% dplyr::summarise(value = mean(value,na.rm = T)) %>% ungroup() %>% 
+      mutate(date = as.yearmon(date)) %>% arrange(date)
+  }
+  # Now aggregate
+  b1 <- agg(b1,modis.full)
+  b2 <- agg(b2,modis.full)
+  b3 <- agg(b3,modis.full)
+  b4 <- agg(b4,modis.full)
+  b5 <- agg(b5,modis.full)
+  b6 <- agg(b6,modis.full)
+  b7 <- agg(b7,modis.full)
+}
+# Use gap fill those
+if(gapfill){
+  # For each site and band, run an arima model on the time series
+  doFill <- function(b){
+    foreach(siteid =  unique(b$SSBS),
+            .combine = bind_rows,
+            .multicombine = FALSE,
+            .errorhandling = 'pass',
+            .packages = c('dplyr','lubridate','imputeTS','zoo'),
+            .verbose = FALSE) %dopar% {
+              sub <- subset(b,SSBS == siteid)
+              left_join(sub %>%  mutate(date = as.character(date)),
+                        na_kalman(zoo(x = sub$value,order.by = sub$date),model = 'auto.arima') %>% 
+                          as.data.frame() %>% add_rownames('date') %>% rename('value.gf' = '.') %>% 
+                          mutate(date = as.character(date))
+                        )
+            }
+  }
+  # Gap fill all bands
+  b1 <- doFill(b1) %>% rename(value.nongf = value,value = value.gf )
+  b2 <- doFill(b2) %>% rename(value.nongf = value,value = value.gf )
+  b3 <- doFill(b3) %>% rename(value.nongf = value,value = value.gf )
+  b4 <- doFill(b4) %>% rename(value.nongf = value,value = value.gf )
+  b5 <- doFill(b5) %>% rename(value.nongf = value,value = value.gf )
+  b6 <- doFill(b6) %>% rename(value.nongf = value,value = value.gf )
+  b7 <- doFill(b7) %>% rename(value.nongf = value,value = value.gf )
 }
 
 # --- #
@@ -62,29 +114,33 @@ if(tp == "midyear"){
   #interv$target_period <- interval( lubridate::floor_date(sites$Sample_midpoint,"year"), lubridate::ceiling_date(sites$Sample_midpoint,"year") )
   interv$start <- lubridate::floor_date(sites$Sample_midpoint,"year")
   interv$end <- lubridate::ceiling_date(sites$Sample_midpoint,"year")
+  interv$int <- interval(interv$start,interv$end)
 } else {
   #interv$target_period <- interval(sites$Sample_start_earliest - years(1), sites$Sample_start_earliest)
   interv$start <- sites$Sample_start_earliest - years(1)
   interv$end <- sites$Sample_start_earliest
+  interv$int <- interval(interv$start,interv$end)
 }
+# Convert back to date
+if(aggregate2month){b1$date <- as.Date(as.yearmon(b1$date));b2$date <- as.Date(as.yearmon(b2$date));b3$date <- as.Date(as.yearmon(b3$date));b4$date <- as.Date(as.yearmon(b4$date));b5$date <- as.Date(as.yearmon(b5$date));b6$date <- as.Date(as.yearmon(b6$date));b7$date <- as.Date(as.yearmon(b7$date))}
 
 myLog("Interval subsetting per site")
 # Subset bands to respective interval
 sub_b1 <- merge(b1, interv, by = c("SSBS"))
-sub_b1 <- as.data.frame( sub_b1[date>= start & date<=end] )
+sub_b1 <- subset(sub_b1,date %within% int)
+#sub_b1 <- as.data.frame( sub_b1[date>= start & date<=end] ) # Old method
 sub_b2 <- merge(b2, interv, by = c("SSBS"))
-sub_b2 <- as.data.frame( sub_b2[date>= start & date<=end] )
+sub_b2 <- subset(sub_b2,date %within% int)
 sub_b3 <- merge(b3, interv, by = c("SSBS"))
-sub_b3 <- as.data.frame( sub_b3[date>= start & date<=end] )
+sub_b3 <- subset(sub_b3,date %within% int)
 sub_b4 <- merge(b4, interv, by = c("SSBS"))
-sub_b4 <- as.data.frame( sub_b4[date>= start & date<=end] )
+sub_b4 <- subset(sub_b4,date %within% int)
 sub_b5 <- merge(b5, interv, by = c("SSBS"))
-sub_b5 <- as.data.frame( sub_b5[date>= start & date<=end] )
+sub_b5 <- subset(sub_b5,date %within% int)
 sub_b6 <- merge(b6, interv, by = c("SSBS"))
-sub_b6 <- as.data.frame( sub_b6[date>= start & date<=end] )
+sub_b6 <- subset(sub_b6,date %within% int)
 sub_b7 <- merge(b7, interv, by = c("SSBS"))
-sub_b7 <- as.data.frame( sub_b7[date>= start & date<=end] )
-#sub_b7 <- as.data.frame( subb_b7[which(ymd(subb_b7$date) %within% i),] )
+sub_b7 <- subset(sub_b7,date %within% int)
 rm(b1,b2,b3,b4,b5,b6,b7) # clean up
 
 # Get average of band values within times of sampling
@@ -98,7 +154,10 @@ results <- data.frame(SSBS = character(0),
                       BRDF_Band1_mean = numeric(0), BRDF_Band2_mean = numeric(0), BRDF_Band3_mean = numeric(0),
                       BRDF_Band4_mean = numeric(0), BRDF_Band5_mean = numeric(0), BRDF_Band6_mean = numeric(0),BRDF_Band7_mean = numeric(0), 
                       NDVI_mean = numeric(0), NDVI_min = numeric(0),  NDVI_max = numeric(0), NDVI_cv = numeric(0),
+                      NDVI_AUC = numeric(0),
                       EVI_mean = numeric(0), EVI_min = numeric(0),  EVI_max = numeric(0), EVI_cv = numeric(0),
+                      EVI_AUC = numeric(0),
+                      EVI2_AUC = numeric(0),
                       SAVI_mean = numeric(0), SAVI_min = numeric(0),  SAVI_max = numeric(0), SAVI_cv = numeric(0),
                       NDWI_mean = numeric(0), NDWI_min = numeric(0),  NDWI_max = numeric(0), NDWI_cv = numeric(0),
                       # Spectral heterogeneity
@@ -115,6 +174,7 @@ results2 <- foreach(siteid =  unique(sites$SSBS),
                .multicombine = FALSE,
                .errorhandling = 'pass',
                .packages = c('dplyr','lubridate','data.table'),
+               .export = c('trapezoid','gapfill'),
                .verbose = FALSE) %dopar% {
   myLog(siteid)
   sub <- subset(sites,SSBS == siteid)
@@ -135,7 +195,12 @@ results2 <- foreach(siteid =  unique(sites$SSBS),
   # Collect and save output metrics
 
   # Missing values
-  out$propNA <- length(which(is.na(subb_b1$value))) / nrow(subb_b1)
+  if(gapfill){
+    # Adapted for non-gapfilled data
+    out$propNA <- length(which(is.na(subb_b1$value.nongf))) / nrow(subb_b1)
+  } else {
+    out$propNA <- length(which(is.na(subb_b1$value))) / nrow(subb_b1)
+  }
   
   # Average bands
   out$BRDF_Band1_mean <- mean(subb_b1$value,na.rm = T) * 0.0001
@@ -157,14 +222,15 @@ results2 <- foreach(siteid =  unique(sites$SSBS),
     left_join(.,(subb_b7 %>% rename(Band7 = value) %>% select(date,Band7) ),by= c("date"))
     
   # Correct values
-  bands[,3:ncol(bands)] <- bands[,3:ncol(bands)] * 0.0001
+  bands <- bands %>% mutate_at(vars(matches('Band')), function(x) x * 0.0001)
   
   # NDVI
   # (5-4) / (5+4)
   bands$NDVI <- (bands$Band2 - bands$Band1) / (bands$Band2 + bands$Band1)
   # -> Calc results
   out$NDVI_mean = mean(bands$NDVI, na.rm = T); out$NDVI_min = min(bands$NDVI, na.rm = T);  out$NDVI_max = max(bands$NDVI,na.rm = T); out$NDVI_cv = co.var(bands$NDVI)
-
+  # Area under the curve
+  out$NDVI_AUC = trapezoid(x = bands$date,y = bands$NDVI)
   # EVI
   # EVI = G * (NIR – RED)/(NIR + C1*RED - C2*BLUE + L))
   #G – Gain factor
@@ -174,12 +240,16 @@ results2 <- foreach(siteid =  unique(sites$SSBS),
   bands$EVI <- 2.5 * ((bands$Band2 - bands$Band1) / (bands$Band2 + 6.0 * bands$Band1 - 7.5 * bands$Band3 + 1.0))
   # -> Calc results
   out$EVI_mean = mean(bands$EVI, na.rm = T); out$EVI_min = min(bands$EVI, na.rm = T);  out$EVI_max = max(bands$EVI,na.rm = T); out$EVI_cv = co.var(bands$EVI)
+  # Area under the curve
+  out$EVI_AUC = trapezoid(x = bands$date,y = bands$EVI)
   
   # EVI2
   # Using only two bands without blue
   bands$EVI2 <- 2.5 * ((bands$Band2 - bands$Band1) / (bands$Band2 + bands$Band1 + 1))
   # -> Calc results
   out$EVI2_mean = mean(bands$EVI2, na.rm = T); out$EVI2_min = min(bands$EVI2, na.rm = T);  out$EVI2_max = max(bands$EVI2,na.rm = T); out$EVI2_cv = co.var(bands$EVI2)
+  # Area under the curve
+  out$EVI2_AUC = trapezoid(x = bands$date,y = bands$EVI2)
   
   # SAVI
   # SAVI = (1 + L) * (NIR – RED)/(NIR + RED + L)
@@ -199,6 +269,8 @@ results2 <- foreach(siteid =  unique(sites$SSBS),
   if(class(mod)!="try-error") {
     # Calculate centroid 
     cent <- cbind(cent.PC1 = mean(mod$x[,"PC1"]), cent.PC2 =  mean(mod$x[,"PC2"]) )
+    # Save the centroid value
+    out$centroid <- cent
     
     # Calculate pairwise euclidean distance matrix 
     d <- as.matrix( dist(rbind(cent, cbind(mod$x[,"PC1"],mod$x[,"PC2"]) ), method = "euclidean") )
@@ -214,6 +286,6 @@ results2 <- foreach(siteid =  unique(sites$SSBS),
   #results <- rbind(results, out)
   return(out)
 }
-
 saveRDS(results2,paste0("MCD43A4_BRDF_center_computed_",tp,".rds"))
 stopCluster(cl)
+stop('Done')

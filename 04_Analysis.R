@@ -10,14 +10,14 @@ library(ggthemes)
 library(scales)
 library(colorspace)
 # Modelling
-library(brms)
+library(brms);library(rstan)
 library(tidybayes)
 library(bayesplot)
 library(shinystan)
-source('00_HelperFunction.R')
+source('000_HelperFunction.R')
 # Hacks to make BRMS faster
 rstan_options(auto_write = TRUE)
-options(mc.cores = parallel::detectCores())
+options(mc.cores = parallel::detectCores()-1)
 # ------------------------------------ #
 # Parameters 
 
@@ -26,9 +26,10 @@ sites <- readRDS('resSaves/sites_diversity.rds')
 
 # Load remote-sensing data 
 rs <- readRDS('resSaves/MCD43A4_BRDF_center_computed_yearbefore.rds') %>% 
-  drop_na() %>% 
   # Remove sites with too much missing data
-  filter(propNA < 0.5)
+  filter(propNA <= 0.5) %>% 
+  # Remove those with no positive EVI, which likely fall in water, or where the AUC is smaller than 0
+  filter(EVI2_mean >0, EVI2_AUC > 0)
 mean(rs$propNA);sd(rs$propNA)
 
 # Figure path

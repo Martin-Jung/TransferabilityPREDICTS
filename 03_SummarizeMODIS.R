@@ -33,80 +33,110 @@ myLog("Starting loading extractions")
 cl <- parallel::makeCluster( cores, outfile = paste0( round( as.numeric(now()) ) ,"_logfile.txt") )
 doParallel::registerDoParallel(cl)
 
-# Bind them together
-b1 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band1.rds")) )
-b2 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band2.rds")) )
-b3 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band3.rds")) )
-b4 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band4.rds")) )
-b5 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band5.rds")) )
-b6 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band6.rds")) )
-b7 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band7.rds")) )
-
+# Load PREDICTS prepared sites
 sites <- readRDS("resSaves/sites_diversity.rds") %>% 
   dplyr::filter( year(Sample_start_earliest) >= 2001 ) # Remove sites from before 2001 as there will be no data from MODIS for this period
 
-# Initial subsets
-myLog("subsetting to only target sites")
-b1 <- subset(b1,SSBS %in% sites$SSBS) # These subsets use the data.table structure first
-b2 <- subset(b2,SSBS %in% sites$SSBS)
-b3 <- subset(b3,SSBS %in% sites$SSBS)
-b4 <- subset(b4,SSBS %in% sites$SSBS)
-b5 <- subset(b5,SSBS %in% sites$SSBS)
-b6 <- subset(b6,SSBS %in% sites$SSBS)
-b7 <- subset(b7,SSBS %in% sites$SSBS)
-
-# --- #
-# Eventual gap filling
-# Mean aggregate all time series to monthly steps
-if(aggregate2month){
-  # Theoretical MODIS monthly measurements
-  modis.full <- zooreg(data=NA,order.by =  as.yearmon(2000 + seq(0, (2016-2000)*12)/12),frequency = 12 ) %>% 
-    as.data.frame() %>% add_rownames('date') %>% rename('value' = '.')
-  # Aggregation function
-  agg <- function(df,modis.full){ df %>% 
-      mutate(date = as.character(as.yearmon(date)) ) %>% 
-      # Those date not present, append
-      bind_rows(., crossing(modis.full,SSBS= df$SSBS, Band = df$Band)) %>% 
-      group_by(SSBS,Band,date) %>% dplyr::summarise(value = mean(value,na.rm = T)) %>% ungroup() %>% 
-      mutate(date = as.yearmon(date)) %>% arrange(date)
+if(!file.exists('b1.rds')){
+  
+  # Bind them together
+  b1 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band1.rds")) )
+  b2 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band2.rds")) )
+  b3 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band3.rds")) )
+  b4 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band4.rds")) )
+  b5 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band5.rds")) )
+  b6 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band6.rds")) )
+  b7 <- as.data.table( readRDS(paste0(path,"/MCD43A4_Band7.rds")) )
+  
+  # Initial subsets
+  myLog("subsetting to only target sites")
+  b1 <- subset(b1,SSBS %in% sites$SSBS) # These subsets use the data.table structure first
+  b2 <- subset(b2,SSBS %in% sites$SSBS)
+  b3 <- subset(b3,SSBS %in% sites$SSBS)
+  b4 <- subset(b4,SSBS %in% sites$SSBS)
+  b5 <- subset(b5,SSBS %in% sites$SSBS)
+  b6 <- subset(b6,SSBS %in% sites$SSBS)
+  b7 <- subset(b7,SSBS %in% sites$SSBS)
+  
+  # --- #
+  # Eventual gap filling
+  # Mean aggregate all time series to monthly steps
+  if(aggregate2month){
+    # Theoretical MODIS monthly measurements
+    modis.full <- zooreg(data=NA,order.by =  as.yearmon(2000 + seq(0, (2016-2000)*12)/12),frequency = 12 ) %>% 
+      as.data.frame() %>% add_rownames('date') %>% rename('value' = '.')
+    # Aggregation function
+    agg <- function(df,modis.full){ df %>% 
+        mutate(date = as.character(as.yearmon(date)) ) %>% 
+        # Those date not present, append
+        bind_rows(., crossing(modis.full,SSBS= df$SSBS, Band = df$Band)) %>% 
+        group_by(SSBS,Band,date) %>% dplyr::summarise(value = mean(value,na.rm = T)) %>% ungroup() %>% 
+        mutate(date = as.yearmon(date)) %>% arrange(date)
+    }
+    # Now aggregate
+    b1 <- agg(b1,modis.full)
+    b2 <- agg(b2,modis.full)
+    b3 <- agg(b3,modis.full)
+    b4 <- agg(b4,modis.full)
+    b5 <- agg(b5,modis.full)
+    b6 <- agg(b6,modis.full)
+    b7 <- agg(b7,modis.full)
   }
-  # Now aggregate
-  b1 <- agg(b1,modis.full)
-  b2 <- agg(b2,modis.full)
-  b3 <- agg(b3,modis.full)
-  b4 <- agg(b4,modis.full)
-  b5 <- agg(b5,modis.full)
-  b6 <- agg(b6,modis.full)
-  b7 <- agg(b7,modis.full)
-}
-# Use gap fill those
-if(gapfill){
-  # For each site and band, run an arima model on the time series
-  doFill <- function(b){
-    foreach(siteid =  unique(b$SSBS),
-            .combine = bind_rows,
-            .multicombine = FALSE,
-            .errorhandling = 'pass',
-            .packages = c('dplyr','lubridate','imputeTS','zoo'),
-            .verbose = FALSE) %dopar% {
-              sub <- subset(b,SSBS == siteid)
-              left_join(sub %>%  mutate(date = as.character(date)),
-                        na_kalman(zoo(x = sub$value,order.by = sub$date),model = 'auto.arima') %>% 
-                          as.data.frame() %>% add_rownames('date') %>% rename('value.gf' = '.') %>% 
-                          mutate(date = as.character(date))
-                        )
-            }
+  # Use gap fill those
+  if(gapfill){
+    # For each site and band, run an arima model on the time series
+    doFill <- function(b){
+      foreach(siteid =  unique(b$SSBS),
+              .combine = bind_rows,
+              .multicombine = FALSE,
+              .errorhandling = 'pass',
+              .packages = c('dplyr','lubridate','imputeTS','zoo'),
+              .verbose = FALSE) %dopar% {
+                sub <- subset(b,SSBS == siteid)
+                try({ o <- left_join(sub %>%  mutate(date = as.character(date)),
+                          na_kalman(zoo(x = sub$value,order.by = sub$date),model = 'auto.arima',maxgap = 5) %>% 
+                            as.data.frame() %>% add_rownames('date') %>% rename('value.gf' = '.') %>% 
+                            mutate(date = as.character(date))
+                          )})
+                if(class(o)=='try-error'){
+                  o <- left_join(sub %>%  mutate(date = as.character(date)),
+                                      na_interpolation(zoo(x = sub$value,order.by = sub$date),option = 'linear',maxgap = 5) %>% 
+                                        as.data.frame() %>% add_rownames('date') %>% rename('value.gf' = '.') %>% 
+                                        mutate(date = as.character(date))
+                  )
+                  return(o)
+                } else { return(o)}
+              }
+    }
+    # Gap fill all bands
+    b1 <- doFill(b1) %>% rename(value.nongf = value,value = value.gf )
+    b2 <- doFill(b2) %>% rename(value.nongf = value,value = value.gf )
+    b3 <- doFill(b3) %>% rename(value.nongf = value,value = value.gf )
+    b4 <- doFill(b4) %>% rename(value.nongf = value,value = value.gf )
+    b5 <- doFill(b5) %>% rename(value.nongf = value,value = value.gf )
+    b6 <- doFill(b6) %>% rename(value.nongf = value,value = value.gf )
+    b7 <- doFill(b7) %>% rename(value.nongf = value,value = value.gf )
   }
-  # Gap fill all bands
-  b1 <- doFill(b1) %>% rename(value.nongf = value,value = value.gf )
-  b2 <- doFill(b2) %>% rename(value.nongf = value,value = value.gf )
-  b3 <- doFill(b3) %>% rename(value.nongf = value,value = value.gf )
-  b4 <- doFill(b4) %>% rename(value.nongf = value,value = value.gf )
-  b5 <- doFill(b5) %>% rename(value.nongf = value,value = value.gf )
-  b6 <- doFill(b6) %>% rename(value.nongf = value,value = value.gf )
-  b7 <- doFill(b7) %>% rename(value.nongf = value,value = value.gf )
+  # Make a security save
+  if(!file.exists('b1.rds')){
+    saveRDS(b1,'b1.rds')
+    saveRDS(b2,'b2.rds')
+    saveRDS(b3,'b3.rds')
+    saveRDS(b4,'b4.rds')
+    saveRDS(b5,'b5.rds')
+    saveRDS(b6,'b6.rds')
+    saveRDS(b7,'b7.rds')
+  }
+} else {
+  b1 <- readRDS('b1.rds')
+  b2 <- readRDS('b2.rds')
+  b3 <- readRDS('b3.rds')
+  b4 <- readRDS('b4.rds')
+  b5 <- readRDS('b5.rds')
+  b6 <- readRDS('b6.rds')
+  b7 <- readRDS('b7.rds')
 }
-
+myLog('Starting subsetting')
 # --- #
 # Create interval
 interv <- data.frame(SSBS = sites$SSBS)
@@ -117,9 +147,15 @@ if(tp == "midyear"){
   interv$int <- interval(interv$start,interv$end)
 } else {
   #interv$target_period <- interval(sites$Sample_start_earliest - years(1), sites$Sample_start_earliest)
-  interv$start <- sites$Sample_start_earliest - years(1)
-  interv$end <- sites$Sample_start_earliest
-  interv$int <- interval(interv$start,interv$end)
+  if(aggregate2month){
+    interv$start <- as.yearmon( sites$Sample_start_earliest - years(1) )
+    interv$end <- as.yearmon( sites$Sample_start_earliest )
+    interv$int <- interval(interv$start,interv$end)    
+  } else {
+    interv$start <- sites$Sample_start_earliest - years(1)
+    interv$end <- sites$Sample_start_earliest
+    interv$int <- interval(interv$start,interv$end)
+  }
 }
 # Convert back to date
 if(aggregate2month){b1$date <- as.Date(as.yearmon(b1$date));b2$date <- as.Date(as.yearmon(b2$date));b3$date <- as.Date(as.yearmon(b3$date));b4$date <- as.Date(as.yearmon(b4$date));b5$date <- as.Date(as.yearmon(b5$date));b6$date <- as.Date(as.yearmon(b6$date));b7$date <- as.Date(as.yearmon(b7$date))}
@@ -161,6 +197,7 @@ results <- data.frame(SSBS = character(0),
                       SAVI_mean = numeric(0), SAVI_min = numeric(0),  SAVI_max = numeric(0), SAVI_cv = numeric(0),
                       NDWI_mean = numeric(0), NDWI_min = numeric(0),  NDWI_max = numeric(0), NDWI_cv = numeric(0),
                       # Spectral heterogeneity
+                      PCA_BRDF_centroid = numeric(0),
                       PCA_BRDF_variance12 = numeric(0),
                       PCA_BRDF_meancentroid = numeric(0) # Construct a PCA, calculate centroid within all (1-2) axes
                       # Spectral variability was then calculated as the mean of the Euclidean distances from the centroid of all principal components for each plot. Oldeland
@@ -171,10 +208,10 @@ results <- data.frame(SSBS = character(0),
 #for(siteid in unique(sites$SSBS)){
 results2 <- foreach(siteid =  unique(sites$SSBS),
                .combine = rbind,
-               .multicombine = FALSE,
+               .multicombine = TRUE,
                .errorhandling = 'pass',
                .packages = c('dplyr','lubridate','data.table'),
-               .export = c('trapezoid','gapfill'),
+               .export = c('trapezoid','gapfill','aggregate2month','co.var'),
                .verbose = FALSE) %dopar% {
   myLog(siteid)
   sub <- subset(sites,SSBS == siteid)
@@ -224,6 +261,12 @@ results2 <- foreach(siteid =  unique(sites$SSBS),
   # Correct values
   bands <- bands %>% mutate_at(vars(matches('Band')), function(x) x * 0.0001)
   
+  # Security return
+  if(nrow(bands)==0){return(data.frame())}
+  # If for some reason 13
+  if(aggregate2month & nrow(bands)>12){
+    bands <- bands[1:12,] # Take the first 12
+  }
   # NDVI
   # (5-4) / (5+4)
   bands$NDVI <- (bands$Band2 - bands$Band1) / (bands$Band2 + bands$Band1)
@@ -281,7 +324,7 @@ results2 <- foreach(siteid =  unique(sites$SSBS),
     
     rm(d,cent)
   } else{
-    out$PCA_BRDF_variance12 <- NA; out$PCA_BRDF_meancentroid <- NA
+    out$PCA_BRDF_variance12 <- NA; out$PCA_BRDF_meancentroid <- NA;out$PCA_BRDF_centroid <- NA
   }
   #results <- rbind(results, out)
   return(out)

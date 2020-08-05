@@ -1,7 +1,7 @@
 ### Helper functions ####
+library(dplyr)
 # -------------------------------- #
 `%notin%` = function(a, b){!(a %in% b)}
-
 which.na = function(x){which(is.na(x))}
 # Digit sum
 digitsum <- function(x) sum(floor(x / 10^(0:(nchar(x) - 1))) %% 10)
@@ -27,14 +27,51 @@ normalize <- function(x)
     else return(y)
   }
 
+
+# Do filter history and construct sequence
+filterTraj <- function(df, group ) {
+  stopifnot(group %in% ex$history)
+  # Construct history trajectories
+  ex %>% arrange(year) %>% 
+    filter(history %in% c(group)) %>% 
+    group_by(SSBS) %>% 
+    summarize(Trajectory = paste0(unique(value.label),collapse = "_"))
+}
+
 # Standard error of the mean
 sem <- function (x) 
 {
   sqrt(var(x, na.rm = TRUE)/length(na.omit(x)))
 }
 
+vif.mer <- function (fit) 
+{
+  require(lme4)
+  v <- vcov(fit)
+  nam <- names(fixef(fit))
+  ns <- sum(1 * (nam == "Intercept" | nam == "(Intercept)"))
+  if (ns > 0) {
+    v <- v[-(1:ns), -(1:ns), drop = FALSE]
+    nam <- nam[-(1:ns)]
+  }
+  d <- diag(v)^0.5
+  v <- diag(solve(v/(d %o% d)))
+  names(v) <- nam
+  v
+}
+
+# Get standardized coefficients for lmer
+lm.beta.lmer <- function(mod) {
+  b <- fixef(mod)[-1]
+  sd.x <- apply(getME(mod,"X")[,-1],2,sd)
+  sd.y <- sd(getME(mod,"y"))
+  b*sd.x/sd.y
+}
+
 # Describe function
 describe <- function(x) {Hmisc::describe(x)} # Convenience describe function
+# Not in function
+'%notin%' <- function(x,y)!('%in%'(x,y))
 
 #' Calculates the coeffiecient of variation
 co.var <- function(x,na.rm=T,multiplier = 1) {
@@ -47,6 +84,25 @@ co.var <- function(x,na.rm=T,multiplier = 1) {
 }
 
 # ---------------------------------------
+
+# Function to isolate stable periods from time series - cpt.varmean
+stabPer <- function(x,cp){
+  cp.l <- cpts(cp) # Location of changepoints
+  # Return a list of subsets
+  o <- list(x[1:cp.l[1]]) # The first one
+  cp.l <- c(cp.l, length(x)) # Remove the first and add the last
+  for(i in 1:(length(cp.l)-1)){ 
+    o[[i+1]] <- x[cp.l[i]:cp.l[i+1]] 
+  }
+  return(o)
+}
+
+new.freq <- function(d, freq = 46) {
+  y <- as.Date(cut(range(d), "years")) + c(0, 366)
+  yd <- seq(y[1], y[2], "year")
+  yy <- as.numeric(format(yd, "%Y"))
+  floor(freq * approx(yd, yy, xout = d)$y) / freq
+}
 
 # Load in al MODIS BRDF Bands
 readInFormat <- function(x,idv = "SSBS"){
@@ -116,6 +172,21 @@ BRDFconvertQAScores <- function(qsc,band=NA,QualityThreshold=3){
 bt.asin <- function(x) {
   z <- sin(x)^2
   return(z)
+}
+
+#### Max CCF ####
+# Returns the maximal value of the crosscorrelation function,
+# thus indicating the time when there is a certain lag
+aMaxCCF <- function(a,b,lt = 5)
+{
+  d <- ccf(a, b, plot = FALSE, lag.max = length(a)-lt)
+  cor = d$acf[,,1]
+  abscor = abs(d$acf[,,1])
+  lag = d$lag[,,1]
+  res = data.frame(cor,lag)
+  absres = data.frame(abscor,lag)
+  absres_max = res[which.max(absres$abscor),]
+  return(absres_max)
 }
 
 #### LME4 functions ####
@@ -582,7 +653,93 @@ monthlyfunction.data.frame <- function(x, FUN, na.rm=TRUE,
 } #'monthlyfunction.data.frame' END
 
 
+################################################################################
+# Author : Mauricio Zambrano-Bigiarini                                         #
+################################################################################
+# Started: 25-Jul-2011                                                         #
+# Updates: 08-Aug-2011                                                         #
+#          29-May-2013                                                         #
+################################################################################
+monthlyfunction.matrix <- function(x, FUN, na.rm=TRUE,
+                                   dates=1, date.fmt="%Y-%m-%d",
+                                   out.type="data.frame",
+                                   verbose=TRUE,...) {
+  x <- as.data.frame(x)
+  #NextMethod("monthlyfunction")
+  monthlyfunction.data.frame(x=x, FUN=FUN, na.rm=na.rm,
+                             dates=dates, date.fmt=date.fmt,
+                             out.type=out.type,
+                             verbose=verbose,...)
+  
+} # 'monthlyfunction.matrix' END  
 
+# File sfreq.R
+# Part of the hydroTSM R package, http://www.rforge.net/hydroTSM/ ; 
+#                                 http://cran.r-project.org/web/packages/hydroTSM/
+# Copyright 2009-2013 Mauricio Zambrano-Bigiarini
+# Distributed under GPL 2 or later
+
+################################################################################
+# sfreq: Sampling frequency of a ts/zoo object                                 #
+################################################################################
+# This function generates a table indicating the number of days                #
+# with information (<>NA's) within a data.frame                                #
+################################################################################
+# Author : Mauricio Zambrano-Bigiarini                                         #
+################################################################################
+# Started: 13-May-2009                                                         #
+# Updates: Mar 2009                                                            #
+#          Nov 2010                                                            #
+#          Apr 2011 ; 09-Aug-2011                                              #
+#          18-Oct-2012                                                         #
+#          29-May-2013                                                         #
+################################################################################
+sfreq <- function(x, min.year=1800) {
+  
+  # Checking that 'class(x)'
+  valid.class <- c("xts", "zoo")    
+  if (length(which(!is.na(match(class(x), valid.class )))) <= 0) 
+    stop("Invalid argument: 'x' must be in c('xts', 'zoo')" )
+  
+  out <- periodicity(x)$scale # xts::periodicity
+  
+  if (out == "yearly") out <- "annual"
+  
+  return(out)
+  
+} # 'sfreq' END
+
+
+### Weekly function ###
+weeklyfunction <- function(x, FUN, na.rm=TRUE,...) {
+  
+  # Checking that the user provied a valid argument for 'FUN'
+  if (missing(FUN)) stop("Missing argument: 'FUN' must be provided")
+  
+  # Checking the user provide a valid value for 'x'
+  if (sfreq(x) %in% c("quarterly", "annual"))
+    stop("Invalid argument: 'x' is not a sub-daily, daily, weekly or monthly ts. 'x' is a ", sfreq(x), " ts" )
+  
+  # Monthly index for 'x'
+  dates  <- time(x)
+  m      <- as.numeric(format( dates, "%W" ))
+
+  # 'as.numeric' is necessary for being able to change the names to the output
+  totals <- aggregate(x, by= m, FUN=FUN, na.rm= na.rm, ... ) 
+  
+  # Replacing the NaNs by 'NA.
+  # NaN's are obtained when using the FUN=mean with complete NA values
+  nan.index          <- which(is.nan(totals))
+  if ( length(nan.index) > 0 )  totals[ nan.index] <- NA
+  
+  # Replacing all the Inf and -Inf by NA's
+  # min(NA:NA, na.rm=TRUE) == Inf  ; max(NA:NA, na.rm=TRUE) == -Inf
+  inf.index <- which(is.infinite(totals))
+  if ( length(inf.index) > 0 ) totals[inf.index] <- NA
+  
+  return(totals)
+  
+}
 
 simpson <- function(y, a, b, n = 100) {
   # numerical integral of y from a to b
@@ -1197,28 +1354,34 @@ stat_n_text <-
                    inherit.aes = inherit.aes, params = params)
   }
 
-#### Do a quick MapView lookup ####
-studysite_map <- function(spp, studywise = FALSE){
-  stopifnot(require(mapview))
-  stopifnot(require(sp))
-  if(studywise){
-    spp <- spp %>% dplyr::select(Longitude,Latitude) %>% 
-      summarise(Longitude = mean(Longitude,na.rm = T), Latitude = mean(Latitude, na.rm = T)) # Simply averaging gives an approx centroid
-  } else { assertthat::assert_that(nrow(spp) == 1,msg = 'More than one site. Set studywise parameter to TRUE') }
-  
+#### Do a qucik MapView lookup ####
+spatialLookup <- function(spp){
   paste0("Coordinates (Lon|Lat): ",spp$Longitude,", ",spp$Latitude)
+  library(mapview)
+  library(sp)
   coordinates(spp) <- ~Longitude + Latitude
   proj4string(spp) <- CRS("+proj=longlat +datum=WGS84")
   mapView(spp) 
 }
 
-# Make a map out of a PREDICTS subset
-subset_map <- function(df){
-  stopifnot(require(sf))
-  stopifnot(require(maps))
-  map()
-  points(df$Latitude~df$Longitude,col='red',pch = 19)
+#### Filter out permanent water ####
+# Returns site ID and if site falls into water (MODE) or not
+waterFilter <- function(type="mode"){
+  library(jsonlite);require(dplyr)
+  if(type == "mode"){
+    wa <- fromJSON("extracts/PREDICTS_Permanentwater_mode.geojson.json",flatten=T)$features
+    wa <- wa %>% dplyr::select(properties.SS,properties.SSBS,properties.mode) %>% 
+      dplyr::rename(SS = properties.SS, SSBS = properties.SSBS, WaterMode = properties.mode)
+    return(wa)
+  } else {
+    wa <- fromJSON("extracts/PREDICTS_Permanentwater.geojson.json",flatten=T)$features
+    wa <- wa %>% dplyr::select(properties.SS,properties.SSBS,properties.sum) %>% 
+      dplyr::rename(SS = properties.SS, SSBS = properties.SSBS, WaterSum = properties.sum)
+    # Multiply and calculate proportion
+    return(wa)
+  }
 }
+
 
 #==============================================================================
 #### 'Probability of Interspecific Encounter (PIE) ####

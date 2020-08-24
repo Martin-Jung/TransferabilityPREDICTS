@@ -11,14 +11,7 @@ library(data.table)
 library(parallel)
 library(doParallel)
 source("000_HelperFunction.R")
-myLog <- function(...) {
-  cat(paste0("[Spectral] ", Sys.time(), " | ", ..., "\n"))
-}
-trapezoid = function(x, y) 
-{ # computes the integral of y with respect to x using trapezoidal integration. 
-  idx = 2:length(x)
-  return (as.double( (x[idx] - x[idx-1]) %*% (y[idx] + y[idx-1])) / 2)
-}
+
 # Path to the MODIS BRDF extracts
 path = "/lustre/scratch/lifesci/mj291/PREDICTS_MCDv6"
 

@@ -10,6 +10,12 @@ myLog <- function(...) {
   cat(paste0("[Processing] ", Sys.time(), " | ", ..., "\n"))
 }
 
+trapezoid = function(x, y) 
+{ # computes the integral of y with respect to x using trapezoidal integration. 
+  idx = 2:length(x)
+  return (as.double( (x[idx] - x[idx-1]) %*% (y[idx] + y[idx-1])) / 2)
+}
+
 # Mode
 Mode <- function(x,...) {
   ux <- unique(x,...)

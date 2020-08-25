@@ -123,7 +123,7 @@ sites <- sites %>% dplyr::filter(TGrouping != "Other")
 
 table(sites$Sampling_method,sites$TGrouping)
 
-#### Sampling extent interpolation ####
+#### Sampling extent approximation ####
 # - # 
 d <- sites
 d$Max_linear_extent_metres_predicted <- is.na(d$Max_linear_extent_metres) # template column

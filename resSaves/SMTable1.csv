@@ -1,0 +1,247 @@
+TGrouping,Sampling_method,Sampling_effort_unit,Sampling_grouping,Grouping_unit,Effort_multiplier
+Plantae,fixed plots/quadrats,square m,FixedPlot,Space,0.0001
+Plantae,fixed plots/quadrats,plot,FixedPlot,Plot,1
+Plantae,line/belt transects,meter,Transect,Space,0.0001*(x^2)
+Plantae,line/belt transects,square m,Transect,Space,0.0001
+Plantae,line/belt transects,plot,Transect,Plot,1
+Plantae,line/belt transects,site,Transect,Plot,1
+Plantae,fixed plots/quadrats,site,FixedPlot,Plot,1
+Plantae,fixed plots/quadrats,hectare,FixedPlot,Space,1
+Plantae,point counts,hour,FixedPlot,Time,(1/24)
+Plantae,line/belt transects,hour,Transect,Time,(1/24)
+Plantae,point counts,minute,FixedPlot,Time,(1/1440)
+Plantae,fixed plots/quadrats,square km,FixedPlot,Space,100
+Plantae,various,visit,NA,Plot,NA
+Plantae,fixed plots/quadrats,visit,FixedPlot,Plot,1
+Plantae,visual encounter survey,visit,Survey,Plot,1
+Plantae,plots/quadrats,site,FixedPlot,Plot,1
+Plantae,transect,site,Transect,Plot,1
+Plantae,visual encounter survey,plot,Survey,Plot,1
+Plantae,sweep path,site,Netting,Plot,1
+Plantae,transect,plot,Transect,Plot,1
+Plantae,line/belt transects,minute,Transect,Time,(1/1440)
+Plantae,biomass estimation,square m,NA,Space,NA
+Plantae,visual encounter survey,square m,Survey,Space,0.0001
+Plantae,visual encounter survey,meter,Survey,Space,0.0001*(pi*x^2)
+Plantae,visual encounter survey,kilometer,Survey,Space,100*(pi*x^2)
+Plantae,pit-fall traps,trap,Trap,Plot,1
+Plantae,fixed plots/quadrats,day,FixedPlot,Time,1
+Plantae,live traps,day,Trap,Time,1
+Fungi,specimen collection,site,Survey,Plot,1
+Fungi,fixed plots/quadrats,site,FixedPlot,Plot,1
+Fungi,fixed plots/quadrats,plot,FixedPlot,Plot,1
+Fungi,soil core,site,FixedPlot,Plot,1
+Fungi,fixed plots/quadrats,visit,FixedPlot,Plot,1
+Invertebrates,transects with baits,trap,Transect,Plot,1
+Invertebrates,specimen collection,hour,Survey,Time,(1/24)
+Invertebrates,aerial transect,visit,Transect,Plot,1
+Invertebrates,baited traps,trap,Trap,Plot,1
+Invertebrates,aerial transect,kilometer,Transect,Space,100*(pi*x^2)
+Invertebrates,sweep net,hour,Netting,Time,(1/24)
+Invertebrates,systematic searching,day,Survey,Time,1
+Invertebrates,fixed plots/quadrats,day,FixedPlot,Time,1
+Invertebrates,visual encounter survey,minute,Survey,Time,(1/1440)
+Invertebrates,aerial transect,minute,Transect,Time,(1/1440)
+Invertebrates,sweep nets,number of sweeps,Netting,Plot,1
+Invertebrates,fixed plots/quadrats,minute,FixedPlot,Time,(1/1440)
+Invertebrates,point counts,minute,FixedPlot,Time,(1/1440)
+Invertebrates,aerial transect,meter,Transect,Space,0.0001*(pi*x^2)
+Invertebrates,flower visitation observation,minute,Survey,Time,(1/1440)
+Invertebrates,line/belt transects,hour,Transect,Time,(1/24)
+Invertebrates,flight trap,week,Trap,Time,7
+Invertebrates,pit-fall traps,week,Trap,Time,7
+Invertebrates,aerial transect,site,Transect,Plot,1
+Invertebrates,systematic searching,hour,Survey,Time,(1/24)
+Invertebrates,window trap,day,Trap,Time,1
+Invertebrates,pan traps,day,Trap,Time,1
+Invertebrates,phytometer,hour,Trap,Time,(1/24)
+Invertebrates,line/belt transects,meter,Transect,Space,0.0001*(pi*x^2)
+Invertebrates,specimen collection,catch,Survey,Plot,1
+Invertebrates,flower visitations,minute,Survey,Time,(1/1440)
+Invertebrates,mixed traps,trap,Trap,Plot,1
+Invertebrates,pan traps,trap,Trap,Plot,1
+Invertebrates,mixed traps,hour,Trap,Time,(1/24)
+Invertebrates,fixed plots/quadrats,hour,FixedPlot,Time,(1/24)
+Invertebrates,aerial transect,square m,Transect,Space,0.0001
+Invertebrates,fixed plots/quadrats,plot,FixedPlot,Plot,1
+Invertebrates,sweep net,minute,Netting,Time,(1/1440)
+Invertebrates,pan traps,trap day,Trap,Time,1
+Invertebrates,trap nests,trap,Trap,Plot,1
+Invertebrates,mixed trap,site,Trap,Plot,1
+Invertebrates,systematic searching,site,Survey,Plot,1
+Invertebrates,flight trap,trap,Trap,Plot,1
+Invertebrates,malaise traps,trap,Trap,Plot,1
+Invertebrates,baited traps,point,Trap,Plot,1
+Invertebrates,live traps,trap,Trap,Plot,1
+Invertebrates,various,trap,NA,Plot,NA
+Invertebrates,light trap,catch,Trap,Plot,1
+Invertebrates,multiple,site,NA,Plot,NA
+Invertebrates,baited pit-fall traps,trap days,Trap,Time,1
+Invertebrates,suction samplers,square m,Netting,Space,0.0001
+Invertebrates,specimen collection,square m,Survey,Space,0.0001
+Invertebrates,flight trap,trap days,Trap,Time,1
+Invertebrates,fixed plots/quadrats,square m,FixedPlot,Space,0.0001
+Invertebrates,bole trap,day,Trap,Time,1
+Invertebrates,specimen collection,site,Survey,Plot,1
+Invertebrates,soil core,core,FixedPlot,Plot,1
+Invertebrates,pit-fall traps,trap day,Trap,Time,1
+Invertebrates,pit-fall traps,trap,Trap,Plot,1
+Invertebrates,line/belt transects,visit,Transect,Plot,1
+Invertebrates,light trap,site,Trap,Plot,1
+Invertebrates,suction samplers,site,Netting,Plot,1
+Invertebrates,fixed plots/quadrats,site,FixedPlot,Plot,1
+Invertebrates,quadrats on transects,square m,Transect,Space,0.0001
+Invertebrates,fall nets under trees,trap,Trap,Plot,1
+Invertebrates,pitfall trap transects,trap,Trap,Plot,1
+Invertebrates,fern collection,plot,FixedPlot,Plot,1
+Invertebrates,fogging,plot,Fogging,Plot,1
+Invertebrates,litter collection,plot,FixedPlot,Plot,1
+Invertebrates,soil cores along transects,kilometer,Transect,Space,100*(pi*x^2)
+Invertebrates,baited pit-fall traps,trap,Trap,Plot,1
+Invertebrates,soil core,square m,FixedPlot,Space,0.0001
+Invertebrates,line/belt transects,plot,Transect,Plot,1
+Invertebrates,line/belt transects,kilometer,Transect,Space,100*(pi*x^2)
+Invertebrates,line/belt transects,square m,Transect,Space,0.0001
+Invertebrates,soil core,site,FixedPlot,Plot,1
+Invertebrates,visual encounter survey,plot,Survey,Plot,1
+Invertebrates,line/belt transects,site,Transect,Plot,1
+Invertebrates,multiple,day,NA,Time,NA
+Invertebrates,cylindrical gauze traps,hour,Trap,Time,(1/24)
+Invertebrates,light trap,trap nights,Trap,Time,1
+Invertebrates,baited pit-fall traps,site,Trap,Plot,1
+Invertebrates,various,visit,NA,Plot,NA
+Invertebrates,visual encounter survey,visit,Survey,Plot,1
+Invertebrates,window traps,trap,Trap,Plot,1
+Invertebrates,systematic searching,quarter-hour block,Survey,Time,(15/1440)
+Invertebrates,pan traps,site,Trap,Plot,1
+Invertebrates,window trap,plot,Trap,Plot,1
+Invertebrates,sweep netting,plot,Netting,Plot,1
+Invertebrates,soil core,plot,FixedPlot,Plot,1
+Invertebrates,aerial transect,plot,Transect,Plot,1
+Invertebrates,light trap,plot,Trap,Plot,1
+Invertebrates,suction samplers,plot,Netting,Plot,1
+Invertebrates,transect,plot,Transect,Plot,1
+Invertebrates,point counts,point,FixedPlot,Plot,1
+Invertebrates,transect,site,Transect,Plot,1
+Invertebrates,baited traps,day,Trap,Time,1
+Invertebrates,light trap,hour,Trap,Time,(1/24)
+Invertebrates,malaise traps,day,Trap,Time,1
+Invertebrates,various,plot,NA,Plot,NA
+Invertebrates,visual encounter survey,site,Survey,Plot,1
+Invertebrates,fixed plots/quadrats,visit,FixedPlot,Plot,1
+Invertebrates,soil sample,plot,FixedPlot,Plot,1
+Invertebrates,litter augmented,plot,NA,Plot,NA
+Invertebrates,bamboo twigs,plot,NA,Plot,NA
+Invertebrates,litter and twigs augmented,plot,NA,Plot,NA
+Invertebrates,various,hour,NA,Time,NA
+Invertebrates,aerial nets,day,Netting,Time,(1/24)
+Invertebrates,tvsp traps,day,Trap,Time,(1/24)
+Invertebrates,baited pit-fall traps,hour,Trap,Time,1
+Invertebrates,multiple,trap,NA,Plot,NA
+Invertebrates,sweep_netting,visit,Netting,Plot,1
+Invertebrates,fogging,catch,Fogging,Plot,1
+Invertebrates,aerial flight-interception trap,trap,Trap,Plot,1
+Invertebrates,mixed traps,catch,Trap,Plot,1
+Invertebrates,cylindrical gauze traps,trap,Trap,Plot,1
+Invertebrates,glue traps,day,Trap,Time,1
+Invertebrates,pit-fall traps,site,Trap,Plot,1
+Invertebrates,pit-fall traps,day,Trap,Time,1
+Invertebrates,aerial flight-inception  trap,visit,Trap,Plot,1
+Invertebrates,pit-fall traps,visit,Trap,Plot,1
+Invertebrates,soil core,day,FixedPlot,Time,1
+Invertebrates,soil core,trap,FixedPlot,Plot,1
+Amphibia,visual encounter survey and acoustic survey,hour,Survey,Time,(1/24)
+Amphibia,visual and disturbance survey,plot,Survey,Plot,1
+Amphibia,line/belt transects,site,Transect,Plot,1
+Amphibia,fixed plots/quadrats,hour,FixedPlot,Time,(1/24)
+Amphibia,systematic searching,site,Survey,Plot,1
+Amphibia,call surveys,site,Survey,Plot,1
+Amphibia,pit-fall traps with drift fences,pitfall arrays,Trap,Plot,1
+Amphibia,systematic searching,hour,Survey,Time,(1/24)
+Amphibia,line/belt transects,minute,Transect,Time,(1/1440)
+Amphibia,visual encounter survey,visit,Survey,Plot,1
+Amphibia,visual encounter survey,meter,Survey,Space,0.0001*(pi*x^2)
+Amphibia,visual encounter survey,hour,Survey,Time,(1/24)
+Amphibia,accoustic encounter transect,meter,Transect,Space,0.0001*(pi*x^2)
+Reptilia,pit-fall traps with drift fences,day,Trap,Time,1
+Reptilia,multiple,trap,NA,Plot,NA
+Reptilia,tunnel trap,traps,Trap,Plot,1
+Reptilia,drift fences with traps,site,Trap,Plot,1
+Reptilia,visual encounter survey,hour,Survey,Time,(1/24)
+Reptilia,visual encounter survey,plot,Survey,Plot,1
+Reptilia,pit-fall traps with drift fences,trap,Trap,Plot,1
+Reptilia,line/belt transects,hour,Transect,Time,(1/24)
+Aves,aerial transect,meter,Transect,Space,0.0001*(pi*x^2)
+Aves,fixed plots/quadrats,square m,FixedPlot,Space,0.0001
+Aves,visual encounter survey,visit,Survey,Plot,1
+Aves,line/belt transects,site,Transect,Plot,1
+Aves,visual encounter survey,minute,Survey,Time,(1/1440)
+Aves,point counts,hour,FixedPlot,Time,(1/24)
+Aves,call playback,minute,Survey,Time,(1/1440)
+Aves,mackinnon list survey,lists,Survey,Plot,1
+Aves,point counts,minute,FixedPlot,Time,(1/1440)
+Aves,line/belt transects,kilometer,Transect,Space,100*(pi*x^2)
+Aves,visual encounter survey,hectare,Survey,Space,1
+Aves,point counts,point,FixedPlot,Space,(pi*x^2)
+Aves,line/belt transects,meter,Transect,Space,0.0001*(pi*x^2)
+Aves,baited traps,trap,Trap,Plot,1
+Aves,pit-fall traps with drift fences,trap,Trap,Plot,1
+Aves,systematic searching,hour,Survey,Time,(1/24)
+Aves,mist-netting,plot,Netting,Plot,1
+Aves,mist-netting,hour,Netting,Time,(1/24)
+Aves,mist-netting,day,Netting,Time,1
+Aves,systematic searching,kilometer,Survey,Space,100*(pi*x^2)
+Aves,point counts,site,FixedPlot,Plot,1
+Aves,mist-netting,meter,Netting,Space,0.0001*(pi*x^2)
+Aves,point counts,visit,FixedPlot,Plot,1
+Aves,line/belt transects,visit,Transect,Plot,1
+Aves,visual encounter survey,meter,Survey,Space,0.0001*(pi*x^2)
+Aves,baited traps,meter,Trap,Space,0.0001*(pi*x^2)
+Aves,various,day,NA,Time,NA
+Aves,point counts,square km,FixedPlot,Space,100
+Aves,fixed plots/quadrats,square km,FixedPlot,Space,100
+Aves,mist-netting,trap,Netting,Plot,1
+Aves,random walk,hour,Survey,Time,(1/24)
+Aves,visual encounter survey,hour,Survey,Time,(1/24)
+Aves,point counts,relative effort,FixedPlot,Plot,1
+Aves,fixed plots/quadrats,visit,FixedPlot,Plot,1
+Mammalia,line/belt transects,meter,Transect,Space,0.0001*(pi*x^2)
+Mammalia,line transect distance sampling,kilometer,Transect,Space,100*(pi*x^2)
+Mammalia,mist-netting,visit,Netting,Plot,1
+Mammalia,baited sherman traps along transects,trap,Trap,Plot,1
+Mammalia,pit-fall traps with drift fences,trap,Trap,Plot,1
+Mammalia,line/belt transects,kilometer,Transect,Space,100*(pi*x^2)
+Mammalia,systematic searching,minute,Survey,Time,(1/1440)
+Mammalia,live traps,trap nights,Trap,Time,1
+Mammalia,live traps,trap,Trap,Plot,1
+Mammalia,line/belt transects,plot,Transect,Plot,1
+Mammalia,various,point,NA,Plot,NA
+Mammalia,mist-netting,hour,Netting,Time,(1/24)
+Mammalia,harp trap,hour,Trap,Time,(1/24)
+Mammalia,mist-netting,night,Netting,Time,1
+Mammalia,baited traps,night,Trap,Time,1
+Mammalia,baited traps,day,Trap,Time,1
+Mammalia,various,relative effort,NA,Plot,NA
+Mammalia,fixed plots/quadrats,visit,FixedPlot,Plot,1
+Mammalia,mist-netting,meter,Netting,Space,0.0001*(pi*x^2)
+Mammalia,mist-netting,plot,Netting,Plot,1
+Mammalia,camera traps,site,Trap,Plot,1
+Mammalia,anabat detector,plot,Survey,Plot,1
+Mammalia,camera traps,day,Trap,Time,1
+Mammalia,visual encounter survey,meter,Survey,Space,0.0001*(pi*x^2)
+Mammalia,point counts,square km,FixedPlot,Space,100
+Mammalia,harp trap,trap nights,Trap,Time,1
+Mammalia,various,trap nights,NA,Time,NA
+Mammalia,small mammal trapping,trap nights,Trap,Time,1
+Mammalia,mixed traps,catch,Trap,Plot,1
+Mammalia,baited traps,trap,Trap,Plot,1
+Mammalia,line/belt transects,site,Transect,Plot,1
+Mammalia,live traps,site,Trap,Plot,1
+Mammalia,light trap,site,Trap,Plot,1
+Mammalia,visual encounter survey,hour,Survey,Time,(1/24)
+Mammalia,transect,kilometer,Transect,Space,100*(pi*x^2)
+Mammalia,visual encounter survey,site,Survey,Plot,1
+Mammalia,pit-fall traps with drift fences,trapping-night,Trap,Time,1
+Mammalia,fixed plots/quadrats,site,FixedPlot,Plot,1
+Mammalia,baited traps,site,Trap,Plot,1
+Mammalia,pit-fall traps,day,Trap,Time,1

@@ -16,6 +16,29 @@ trapezoid = function(x, y)
   return (as.double( (x[idx] - x[idx-1]) %*% (y[idx] + y[idx-1])) / 2)
 }
 
+# Mape function
+mape <- function(observed, predicted, type = 'normal', denim = 1){
+  assert_that(length(observed)==length(predicted))
+  if(type == 'normal'){
+    return(
+      mean(
+        abs((observed - predicted)/observed)
+      ,na.rm = TRUE) * 100
+    )
+  } else {
+    # Calculate symetric map https://en.wikipedia.org/wiki/Symmetric_mean_absolute_percentage_error
+    return(
+      (100 / length(observed)) * sum( abs( predicted - observed ) / (( abs(predicted) + abs(observed) )*denim),na.rm = TRUE)
+    )
+  }
+}
+
+# Backtransform logit 
+inv_logit <- function(f, a){
+  a <- (1-2*a)
+  (a*(1+exp(f))+(exp(f)-1))/(2*a*(1+exp(f)))
+}
+
 # Mode
 Mode <- function(x,...) {
   ux <- unique(x,...)
@@ -1403,7 +1426,7 @@ waterFilter <- function(type="mode"){
 # B = table(B)
 # PIE(B)
 SiteHurlbertsPie <- function(diversity, site.abundance){
-  yarg:::.Log("Computing Hurlberts PIE")
+  #yarg:::.Log("Computing Hurlberts PIE")
   sd <- rep(NA, length(site.abundance))
   sd[site.abundance] <- tapply(diversity$Measurement[diversity$Is_abundance], 
                                droplevels(diversity$SSS[diversity$Is_abundance]), function(m) {

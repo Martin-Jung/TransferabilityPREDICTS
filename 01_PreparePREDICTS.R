@@ -8,8 +8,9 @@ source("00_HelperFunction.R")
 
 #### Prepare PREDICTS data to be uploaded as G-Fusion table ####
 # Load
-database <- readRDS("../../../PhD/Data/PREDICTS_v1/database.rds") 
 sites <- readRDS("../../../PhD/Data/PREDICTS_v1/sites.rds")
+database <- readRDS("../../../PhD/Data/PREDICTS_v1/database.rds") 
+sites <- sites %>% dplyr::filter(SSS %in%  unique(sites$SSS)[which(unique(sites$SSS) %in% unique(database$SSS))] )
 
 # Calculate sitebased biodiversity metrics
 diversity <- database %>% dplyr::filter(!is.na(Sampling_effort)) %>%  # Remove sites with no recorded sampling effort
@@ -21,6 +22,11 @@ diversity <- database %>% dplyr::filter(!is.na(Sampling_effort)) %>%  # Remove s
 # Sorensen dissimilarity
 dis.sor <- CompDissim2(database,"SorVeg",binary = T)
 dis.bc <- database %>% mutate(Measurement = Effort_corrected_measurement) %>% CompDissim2(.,"BCVeg",binary = F)
+
+# Calculate PIE
+database$Is_abundance <- "Abundance" == database$Diversity_metric_type
+site.abundance <- tapply(database$Is_abundance, database$SSS, unique)
+sites$PIE <- SiteHurlbertsPie(database, site.abundance)
 
 # ---- # 
 # Taxonomic grouping and recategorization
@@ -118,11 +124,6 @@ sites$TGrouping[ intersect( grep(",Ascomycota,Basidiomycota,Mycetozoa",x = sites
 # The rest do not have a clear association to a single higher group and will be removed
 sites <- sites %>% dplyr::filter(TGrouping != "Other")
 
-#### Binning methodologies to ensure compatability  ####
-# A prediction using PREDICTS data only works if study-wise random intercepts are ignored
-
-table(sites$Sampling_method,sites$TGrouping)
-
 #### Sampling extent approximation ####
 # - # 
 d <- sites
@@ -155,6 +156,23 @@ rm(temp)
 # 95%  1414.214
 #d <- subset(d,Max_linear_extent <= quantile(d$Max_linear_extent,probs = .95,na.rm = T))
 
+#### Create and join in new grouping ####
+#source('01a_MethodologyIntercept.R')
+stopifnot(file.exists('resSaves/SMTable1.csv'))
+sm <- read_delim('resSaves/SMTable1.csv',delim = ',',na = 'NA')
+# Assert that columns are present
+assertthat::assert_that(
+  assertthat::has_name(sm,'Sampling_grouping'),assertthat::has_name(sm,'Grouping_unit') 
+)
+# Formatting
+sm$Sampling_grouping <- factor(sm$Sampling_grouping,levels = c('FixedPlot','Transect','Survey','Trap','Netting','Fogging') )
+sm$Grouping_unit <- factor(sm$Grouping_unit, levels = c('Space','Time','Plot'))
+# Join in
+sites <- dplyr::left_join(sites, sm, by = c('TGrouping','Sampling_method','Sampling_effort_unit'))
+# New grouping
+sites$TransferGrouping <- paste0(sites$TGrouping,'_',sites$Sampling_grouping,'_',sites$Grouping_unit)
+saveRDS(sites,"resSaves/sites_diversity.rds")
+
 #### Join with biodiversity estimates ####
 
 # Remove columns present in both dataframes
@@ -166,13 +184,55 @@ d <- left_join(d,diversity,by = c("Source_ID","SS","SSS","SSBS"))
 d <- d[-which(is.na(d$Longitude)),]
 
 # Save final site scores
-saveRDS(d,"sites_diversity.rds")
-saveRDS(dis.sor,"sites_pairwise_sorensen.rds")
-saveRDS(dis.bc,"sites_pairwise_bc.rds")
+saveRDS(d,"resSaves/sites_diversity.rds")
+saveRDS(dis.sor,"resSaves/sites_pairwise_sorensen.rds")
+saveRDS(dis.bc,"resSaves/sites_pairwise_bc.rds")
 
 # Save a spatial file
-d <- readRDS("sites_diversity.rds") %>% dplyr::select(SSBS,Longitude,Latitude)
+d <- readRDS("resSaves/sites_diversity.rds") %>% dplyr::select(SS,SSBS,Longitude,Latitude)
 library(sp);library(plotKML);library(rgdal)
 coordinates(d) <- ~Longitude + Latitude
 proj4string(d) <- "+proj=longlat +datum=WGS84"
 rgdal::writeOGR(d,"sites_diversity.kml",layer = "sites_diversity",driver = "KML")
+
+
+# --- #
+# Calculate distance between pairs of sites in long format
+library(geosphere)
+o <- data.frame()
+for(study in unique(d$SS)){
+  sub <- subset(d,SS == study)
+  if(nrow(sub)<=2) next()
+  # Distance in km
+  dd <- distm(cbind(sub$Longitude,sub$Latitude), fun = distHaversine)/1000
+  dd[upper.tri(dd)] <- NA;diag(dd) <- NA
+  rownames(dd) <- sub$SSBS; colnames(dd) <- sub$SSBS
+  dd <- reshape2::melt(dd) %>% tidyr::drop_na() %>% dplyr::rename(distance = value)
+  dd <- dd %>% dplyr::mutate(SS = study)
+  o <- bind_rows(o, dd)
+}
+
+# Save
+saveRDS(o,paste0('resSaves/pairwiseSiteDistance.rds'))
+
+# --- #
+# Average distance to study centroid
+cent <- d %>% dplyr::group_by(SS) %>% dplyr::summarise(clo = mean(Longitude),cla = mean(Latitude))
+
+library(geosphere)
+o <- data.frame()
+for(study in unique(d$SS)){
+  sub <- subset(d,SS == study)
+  sub.c <- subset(cent, SS == study)
+  if(nrow(sub)<=2) next()
+  # Distance in km
+  dd <- distm(cbind(sub$Longitude,sub$Latitude), sub.c[,c('clo','cla')], fun = distHaversine)/1000
+  dd <- as.data.frame(dd) %>% dplyr::rename(distance = 'V1')
+  dd$distance <- normalize(dd$distance)
+  dd$SSBS <- sub$SSBS; dd$SS <- study
+  o <- bind_rows(o, dd)
+}
+
+# Save
+saveRDS(o,paste0('resSaves/centroidDistance.rds'))
+

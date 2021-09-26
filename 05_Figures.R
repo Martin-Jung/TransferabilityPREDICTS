@@ -34,6 +34,11 @@ sites <- readRDS('resSaves/sites_diversity.rds') %>%
                 'Urban' = 'Urban', 'Cannot decide' = 'Cannot decide'
                                                           ))
 
+# Add bias variable results
+sites <- sites %>% dplyr::left_join(.,
+                                    readRDS(paste0(output_path,'biasvariables.rds'))
+                                    )
+
 # Predictability results
 results_predict1 <- readRDS('resSaves/results_predicatability_nopooling.rds') %>% 
   dplyr::mutate(term = fct_collapse(term,
@@ -68,11 +73,128 @@ rs <- readRDS('resSaves/MCD43A4_BRDF_center_computed_yearbefore.rds') %>%
   # Remove those with no positive EVI, which likely fall in water, or where the AUC is smaller than 0
   filter(EVI2_mean > 0, EVI2_AUC > 0) %>% left_join(., sites %>% dplyr::select(SS,SSBS)) %>% 
   group_by(SS) %>% 
-    dplyr::summarise(EVI2_mean = mean(EVI_mean,na.rm = TRUE),
-                     SpecHetero_mean = mean(PCA_BRDF_meancentroid,na.rm = TRUE)) %>% ungroup()
-
+    dplyr::summarise(EVI2_mean = mean(EVI_mean, na.rm = TRUE),
+                     SpecHetero_mean = mean(PCA_BRDF_meancentroid,na.rm = TRUE),
+                     propNA_mean = mean(propNA, na.rm = TRUE)) %>% ungroup()
 
 # ------------------------- #
+#### Figure 1 ####
+library(GGally)
+library(MASS)
+# Get density of points in 2 dimensions.
+# @param x A numeric vector.
+# @param y A numeric vector.
+# @param n Create a square n by n grid to compute density.
+# @return The density within each square.
+get_density <- function(x, y, ...) {
+  dens <- MASS::kde2d(x, y, ...)
+  ix <- findInterval(x, dens$x)
+  iy <- findInterval(y, dens$y)
+  ii <- cbind(ix, iy)
+  return(dens$z[ii])
+}
+# Spectral vs evi on axes
+# 4 scatter plots of R2 with Abline
+xx <- results_predict1 %>% dplyr::select(term, metric, SS,TGrouping, full_r2) %>% distinct() %>% tidyr::drop_na(full_r2) %>%
+  mutate( metric = factor(metric,levels = c('SR','LA','PIE','SOR'),
+                              labels = c('Species richness', 'Species abundance', 'Assemblage evenness', 'Assemblage composition'))
+  ) %>% 
+  # Also remove infinite values
+  dplyr::filter(!is.infinite(full_r2))
+# Calculate average per metric
+xx %>% dplyr::group_by(term) %>% dplyr::summarise(m = mean(full_r2,na.rm = T), s = sd(full_r2, na.rm=T))
+xx %>% dplyr::group_by(term,metric) %>% dplyr::summarise(m = mean(full_r2,na.rm = T), s = sd(full_r2, na.rm=T))
+xx %>% dplyr::group_by(metric) %>% summarise(quantile(full_r2,.25))
+# Split
+xx <- xx %>% 
+  # Spread R2 out per metric  
+  tidyr::pivot_wider(id_cols = c('SS','metric','TGrouping'),names_from = 'term',values_from = 'full_r2') %>% 
+  # Join in number of sites per study
+  left_join(., sites %>% dplyr::group_by(SS) %>% summarise(N = n())) %>% tidyr::drop_na()
+# Correlation strength
+xx %>% dplyr::group_by(metric) %>% summarise(cor(`Spectral variability`, `Photosynthetic activity`))
+
+# Calculate point density for colouring density of points within each group
+xx <- xx %>% dplyr::group_by(metric) %>% 
+  mutate(density = get_density(`Spectral variability`, `Photosynthetic activity`, n = 100))
+
+# Build plot
+g <- ggplot(xx, aes(x = `Spectral variability`,y = `Photosynthetic activity`, size = N, colour = density)) +
+  theme_classic(base_size = 18) +
+  geom_abline(slope = 1) +
+  geom_point(alpha = .5) +
+    scale_size_binned(range = c(.5,5), trans = 'log10',guide = guide_bins(title = 'N (log)')) +
+    scale_colour_viridis_c(option = 'E',guide = guide_colourbar(title = 'Density')) +
+  facet_wrap(~metric) + 
+    theme(panel.spacing = unit(1, "lines"), axis.text.x.bottom = element_text(angle = 90, vjust = 0.5)) +
+    scale_x_continuous(expand = c(0,0)) +
+  labs( x = expression(paste(R^{2}," for Spectral variability")),
+        y = expression(paste(R^{2}," for Photosynthetic activity"))
+  )
+# g
+ggsave(plot =g ,filename = 'figures/Figure2_R2.png',width = 12,height = 6,dpi = 300)
+
+# Also map the R2 for the SI
+xx <- results_predict1 %>% # Also remove infinite values
+  dplyr::filter(!is.infinite(full_r2)) %>% tidyr::drop_na(full_r2) %>% 
+  dplyr::group_by(SS,metric) %>% dplyr::summarise(full_r2 = mean(full_r2)) %>% 
+  mutate( metric = factor(metric,levels = c('SR','LA','PIE','SOR'),
+                          labels = c('Species richness', 'Species abundance', 'Assemblage evenness', 'Assemblage composition'))
+  ) %>% 
+  left_join(., sites %>% dplyr::group_by(SS) %>% dplyr::summarise(Longitude = mean(Longitude,na.rm=T),
+                                                                  Latitude = mean(Latitude,na.rm=T)) %>% distinct())
+# Now show R2 on a map
+#### SI Figure 2 - map ####
+library(tmap)
+data("World")
+# Load NE
+ne <- sf::st_read('C:/Users/Martin/Downloads/Ecoregions2017/Ecoregions2017.shp') %>% 
+  dplyr::filter(REALM != 'Antarctica')
+# Convert to point
+xx <- st_as_sf(xx, coords = c('Longitude', 'Latitude'),crs = st_crs(World))
+
+gg <- tm_shape(World) +
+    tm_polygons(col = 'grey90', alpha = .25) +
+  # tm_polygons(col = 'COLOR_BIO',border.col = NA, alpha = .25) +
+tm_shape(xx) +
+    tm_bubbles(size = 'full_r2',
+               col = 'full_r2',
+               border.col = "black", border.alpha = .5, 
+               palette = 'cividis',
+               # style="fixed", breaks=c(-Inf, seq(0, 6, by=2), Inf),
+               title.size= expression(R^2), 
+               title.col=""
+    ) +
+  tm_facets(by = 'metric') +
+tm_format("World") +
+tm_layout(panel.label.size = 2,legend.text.size = 1,legend.title.size = 1.5)
+# gg
+tmap::tmap_save(tm = gg,filename = 'figures/SIFigure2.png',
+                # width=16, height=8, units = 'in',
+                dpi = 300, asp = 0)
+
+# -- #
+# pairs plot
+# r2 of model for each measure
+# colour by metric
+# # Combine estimates
+# xx <- results_predict1 %>% dplyr::select(term, metric,SS, full_r2) %>% distinct() %>% tidyr::drop_na(full_r2) %>%
+#   # Spread R2 out per metric  
+#   tidyr::pivot_wider(id_cols = c('SS','term'),names_from = 'metric',values_from = 'full_r2')# %>%
+#   # mutate(across(where(is.numeric), function(x) asin(sqrt(x)) ))
+# 
+# pm <- ggpairs(xx, 3:6,
+#               mapping = ggplot2::aes(color = term),
+#               diag = list(continuous = 'barDiag'),
+#               upper = list(continuous = wrap(ggally_cor, displayGrid = FALSE)),
+#               lower = list(continuous = "points", combo = "dot_no_facet")
+#               ) + 
+#   theme_classic(base_size = 18,base_family = 'Arial') +
+#     scale_colour_manual(values = c('darkgreen','#D2691E'),guide = guide_legend('')) +
+#     scale_fill_manual(values = c('darkgreen','#D2691E'),guide = guide_legend(''))
+# pm
+
+
 #### Figure 2 ####
 # Show MAPE error across metrics and terms for predictability and transferability
 
@@ -178,26 +300,18 @@ cowplot::ggsave2(plot = gg,filename = paste0(figure_path,'/Figure3comb.png'),wid
 # Idea:
 # use a regression tree to identify driving study-wide factors
 # Plot for both predictability and transferability
-library(party)
-library(partykit)
-library(ggparty)
 
 mode <- function(codes){ 
   x <- names( which.max(table(codes)) ) 
-  if(is.null(x)) return(NA)
-  x
-  }
+  if(is.null(x)) return(NA) else x
+}
 
-df <- results_predict1 %>% dplyr::select(SS,term,metric, cv_smape, TGrouping, Biome) %>% 
-  dplyr::rename(smape = cv_smape) %>% tidyr::drop_na(smape) %>% 
-  dplyr::mutate(method = 'Predictability') %>% 
-  dplyr::filter(term == 'Photosynthetic activity') %>% distinct() 
-df$TGrouping <- factor(df$TGrouping,levels = c('Plantae','Fungi','Invertebrates','Amphibia','Reptilia','Aves','Mammalia'))
-# Join in other variables necessary for prediction
+# Other variables necessary for prediction
 ss <- sites %>% dplyr::select(SS,startyear, sampling_duration, Max_linear_extent_metres,
-                        Rescaled_sampling_effort, Predominant_land_use,Use_intensity,
-                        Sampling_grouping, Grouping_unit, Effort_multiplier,
-                        TransferGrouping) %>% 
+                              Rescaled_sampling_effort, Predominant_land_use,Use_intensity,
+                              Sampling_grouping, Grouping_unit, Effort_multiplier,
+                              TransferGrouping, N_samples,
+                              accessibility,tri, cloud) %>% 
   dplyr::group_by(SS) %>% 
   dplyr::summarise(startyear = median(startyear,na.rm = TRUE),
                    Max_linear_extent_metres = median(Max_linear_extent_metres,na.rm = TRUE),
@@ -207,8 +321,29 @@ ss <- sites %>% dplyr::select(SS,startyear, sampling_duration, Max_linear_extent
                    Use_intensity = mode(Use_intensity),
                    Sampling_grouping = mode(Sampling_grouping), Grouping_unit = mode(Grouping_unit), TransferGrouping = mode(TransferGrouping),
                    Effort_multiplier = mode(Effort_multiplier),
-                   NSites = n()
-                   ) %>% ungroup()
+                   accessibility = mean(accessibility,na.rm = TRUE),
+                   tri = mean(tri, na.rm = TRUE),
+                   cloud = mean(cloud, na.rm = TRUE),
+                   NSites = n(),
+                   N_samples = mean(N_samples)
+  ) %>% ungroup()
+
+df1 <- results_predict1 %>% dplyr::select(SS,term,metric, cv_smape) %>% 
+  dplyr::rename(smape = cv_smape) %>% tidyr::drop_na(smape) %>% 
+  dplyr::mutate(method = 'Predictability') %>% 
+  dplyr::filter(term == 'Photosynthetic activity') %>% distinct() 
+
+df2 <- results_predict2 %>% dplyr::group_by(SS,metric, term) %>% 
+  dplyr::summarise(
+    smape = mean(smape,na.rm = TRUE)
+  ) %>% ungroup() %>% tidyr::drop_na(smape) %>%
+  dplyr::filter(term == 'Photosynthetic activity') %>% 
+  dplyr::mutate(method = 'Transferability')
+
+df <- bind_rows(df1,df2)
+# df1$TGrouping <- factor(df1$TGrouping,levels = c('Plantae','Fungi','Invertebrates','Amphibia','Reptilia','Aves','Mammalia'))
+
+#Join in
 df <- df %>% dplyr::left_join(.,  ss,by = 'SS') %>% distinct() %>% 
   # Also join in average remote sensing measures
   dplyr::left_join(., rs)
@@ -235,71 +370,172 @@ df$Use_intensity <- factor(df$Use_intensity,levels = levels(sites$Use_intensity)
 df$metric <- factor(df$metric,levels = c('SR','LA','PIE','SOR'),
                     labels = c('Species richness', 'Species abundance', 'Assemblage evenness', 'Assemblage composition'))
 # ------- #
-# Build conditional inference tree
-mod_ct <- party::ctree(smape ~ TimeEffort + Max_linear_extent_metres + Biome + TGrouping + 
-                         sampling_duration + newEffort * Grouping_unit + NSites +
-                         EVI2_mean + SpecHetero_mean,
-                       data = df %>% dplyr::filter(metric ==levels(df$metric)[3]),
-                       controls = party::ctree_control()
-                       )
-plot(mod_ct)
+# library(party)
+# library(partykit)
+# library(ggparty)
+# # Build conditional inference tree
+# mod_ct <- party::ctree(smape ~ TimeEffort + Max_linear_extent_metres + Biome + TGrouping + 
+#                          sampling_duration + newEffort * Grouping_unit + NSites +
+#                          EVI2_mean + SpecHetero_mean,
+#                        data = df %>% dplyr::filter(metric ==levels(df$metric)[1]),
+#                        controls = party::ctree_control()
+#                        )
+# # recursive partitioning of a generalized regression model
+# mod_ct <- glmtree(smape ~ 0 + metric | TimeEffort + Max_linear_extent_metres + Biome + 
+#                     newEffort * Grouping_unit + NSites + #Predominant_land_use +
+#                     EVI2_mean + sampling_duration ,#TransferGrouping,
+#                      data = df,
+#                     family = gaussian())
+# 
+# plot(mod_ct)
 
-# recursive partitioning of a generalized regression model
-mod_ct <- glmtree(smape ~ 0 + metric | TimeEffort + Max_linear_extent_metres + Biome + TGrouping + 
-                    newEffort * Grouping_unit + NSites + #Predominant_land_use +
-                    EVI2_mean + sampling_duration ,#TransferGrouping,
-                     data = df, family = gaussian())
+# Do a different analysis and simply assess best predictors
+library(lme4)
+library(MuMIn)
+df2 <- df
+df2[,c('TimeEffort','Max_linear_extent_metres','newEffort','NSites','N_samples',
+       'EVI2_mean','SpecHetero_mean',
+       'sampling_duration','propNA_mean','accessibility','tri','cloud')] <- 
+  apply(df2[,c('TimeEffort','Max_linear_extent_metres','newEffort','NSites','N_samples','sampling_duration',
+               'EVI2_mean','SpecHetero_mean',
+               'propNA_mean','accessibility','tri','cloud')],
+        2, scale)
 
-plot(mod_ct)
-plot(mod_ct, tp_args = list(cdplot = TRUE))
-plot(mod_ct, terminal_panel = NULL)
+# Build formula
+f <- formula(
+  smape ~ Max_linear_extent_metres + #Biome +
+    # newEffort
+#    Max_linear_extent_metres * TimeEffort +
+     TimeEffort + NSites +  N_samples + #Predominant_land_use +
+                       propNA_mean + accessibility + tri + #cloud +
+                        sampling_duration + # TGrouping + 
+              (1| TransferGrouping) 
+)
 
-# Need to format the tree
-# https://jtr13.github.io/cc19/introduction-to-package-ggparty.html
-ggparty(mod_ct) +
-  geom_edge() +
-  geom_edge_label() +
-  geom_node_label(aes(label = splitvar),
-                  ids = "inner") +
-  geom_node_label(aes(label = info),
-                  ids = "terminal")
+options(na.action = "na.fail")
+# Method 1 - Predictability
+results1 <- data.frame()
+for(val in 1:4){
+  x = df2 %>% dplyr::filter(metric ==levels(df$metric)[val]) %>% drop_na() %>% 
+    dplyr::filter(method == 'Predictability')
+  fit <- glmer(f,data = x,
+               family = gaussian) # Condition for gamma family is >0
+  dd <- MuMIn::dredge(fit, evaluate = TRUE,trace = TRUE,beta = 'sd')
+  #or as a 95% confidence set:
+  new <- model.avg(dd, subset = cumsum(weight) <= .95,fit = TRUE) # get averaged coefficients
+  o <- bind_cols(
+    data.frame( estimate = new$coefficients[2,] ) %>% tibble::rownames_to_column('variable'),
+    as.data.frame(confint(new))
+  ) %>% dplyr::filter(variable != '(Intercept)') %>% tibble::remove_rownames() %>% 
+    dplyr::mutate(metric = levels(df$metric)[val],
+                  method = 'Predictability',
+                  full_r2_cond = performance::r2(fit)$R2_conditional,
+                  full_r2_marg = performance::r2(fit)$R2_marginal )
+  results1 <- bind_rows(results1, o)
+}
 
-# Plot with ggparty
-ggparty(mod_ct,
-       terminal_space = 0.5,
-       add_vars = list(p.value = "$node$info$p.value")) +
-  geom_edge(size = 1.5) +
-  geom_edge_label(colour = "grey", size = 6) +
-  geom_node_plot(gglist = list(geom_point(aes(x = beauty,
-                                              y = eval,
-                                              col = tenure,
-                                              shape = minority),
-                                          alpha = 0.8),
-                               theme_bw(base_size = 15)),
-                 scales = "fixed",
-                 id = "terminal",
-                 shared_axis_labels = T,
-                 shared_legend = T,
-                 legend_separator = T,
-                 predict = "beauty",
-                 predict_gpar = list(col = "blue",
-                                     size = 1.2)
-  ) +
-  geom_node_label(aes(col = splitvar),
-                  line_list = list(aes(label = paste("Node", id)),
-                                   aes(label = splitvar),
-                                   aes(label = paste("p =", formatC(p.value, format = "e", digits = 2)))),
-                  line_gpar = list(list(size = 12, col = "black", fontface = "bold"),
-                                   list(size = 20),
-                                   list(size = 12)),
-                  ids = "inner") +
-  geom_node_label(aes(label = paste0("Node ", id, ", N = ", nodesize)),
-                  fontface = "bold",
-                  ids = "terminal",
-                  size = 5, 
-                  nudge_y = 0.01) +
-  theme(legend.position = "none")
+# Method 2 - Transferability
+results2 <- data.frame()
+for(val in 1:4){
+  x = df2 %>% dplyr::filter(metric ==levels(df$metric)[val]) %>% drop_na() %>% 
+    dplyr::filter(method == 'Transferability')
+  fit <- glmer(f,data = x,
+               family = gaussian) # Condition for gamma family is >0
+  dd <- MuMIn::dredge(fit, evaluate = TRUE,trace = TRUE,beta = 'sd')
+  #or as a 95% confidence set:
+  new <- model.avg(dd, subset = cumsum(weight) <= .95,fit = TRUE) # get averaged coefficients
+  o <- bind_cols(
+    data.frame( estimate = new$coefficients[2,] ) %>% tibble::rownames_to_column('variable'),
+    as.data.frame(confint(new))
+  ) %>% dplyr::filter(variable != '(Intercept)') %>% tibble::remove_rownames() %>% 
+    dplyr::mutate(metric = levels(df$metric)[val],
+                  method = 'Transferability',
+                  full_r2_cond = performance::r2(fit)$R2_conditional,
+                  full_r2_marg = performance::r2(fit)$R2_marginal )
+  results2 <- bind_rows(results2, o)
+}
+# sjPlot::plot_model(fit,type = 'est')
+# o <- sjPlot::plot_model(fit,type = 'eff')
+# Save results for later #
+results <- bind_rows(results1,results2)
+saveRDS(results, 'resSaves/Figure4_AverageEnsembleModelStatistics.rds')
 
+# --- #
+results <- readRDS('resSaves/Figure4_AverageEnsembleModelStatistics.rds')
+## Average explained by the models
+# Predictability 
+results %>% dplyr::filter(method == "Predictability") %>% summarize(mm = mean(full_r2_marg,na.rm=T),
+                                                                    mc = mean(full_r2_cond,na.rm=T))
+# Transferability
+results %>% dplyr::filter(method == "Transferability") %>% summarize(mm = mean(full_r2_marg,na.rm=T),
+                                                                    mc = mean(full_r2_cond,na.rm=T))
+
+# Format metric order
+results$metric <- factor(results$metric,levels = c('Species richness', 'Species abundance', 'Assemblage evenness', 'Assemblage composition'))
+# Format variable names
+results$variable <- fct_recode(results$variable,
+                       'Sample grain' = 'Max_linear_extent_metres',
+                       'Sample duration' = 'sampling_duration',
+                       'Effort (sites)' = 'NSites',
+                       'Effort (samples)' = 'N_samples',
+                       'Effort (time)' = 'TimeEffort',
+                       'Missing data (satellite)'= 'propNA_mean',
+                       'Topographic ruggedness' = 'tri',
+                       'Accessibility' = 'accessibility'
+                                 )
+results$variable <- factor(results$variable,levels = c(
+  'Sample grain','Sample duration', 'Effort (sites)', 'Effort (samples)', 'Effort (time)',
+  'Accessibility', 'Topographic ruggedness', 'Missing data (satellite)'
+))
+
+# Build the plot
+g <- ggplot(results %>% dplyr::filter(method == "Predictability")#dplyr::filter(method == "Transferability") 
+            %>% distinct(),
+            aes(x = fct_rev(variable), y = estimate, ymin = `2.5 %`, ymax = `97.5 %`,
+                    shape = fct_rev(metric) )) +
+  theme_classic(base_size = 20,base_family = 'Arial') +
+  theme(panel.grid.major =  element_line(size = .5,colour='grey90')) +
+  coord_flip() +
+  geom_hline(yintercept = 0,linetype = 'dotted', size = 1.25) +
+  geom_pointrange(position = position_dodge(width = .5),
+                  size = 1.5) +
+#  facet_wrap(~method) +
+  scale_shape_manual(values = c("\u25CF","\u25B2","\u25A0","\u25BC"),guide = guide_legend(title = 'Measure',nrow = 2)) + 
+  scale_y_continuous(breaks = pretty_breaks(7)) +
+  theme(legend.position = 'bottom',legend.background = element_blank()) +
+  labs(x = '', y = 'Effect on error (Standardized coefficient)')
+g
+ggsave(plot = g,filename = paste0(figure_path,'/Figure4_transferability.png'),width = 10,height = 10)
+# ggsave(plot = g,filename = paste0(figure_path,'/Figure4_predictability.png'),width = 10,height = 10)
+
+# Formula extraction
+library(equatiomatic)
+equatiomatic::extract_eq(fit)
+
+# ------------------------------------ #
+#### Figure 5 - Transferability ####
+# Idea: Map on a continuoues surface the 
+# predictive horizon in 2d space, highlighting the area for 
+# robust predictions can be made
+# X - axis (photosynthetic avail)
+# y - axis (spectral heterogeneity)
+# z
+
+# ------------------------------------ #
+#### SI Table 1 ####
+
+r <- readRDS('resSaves/results_transferability.rds') %>% 
+  filter(!is.na(smape), dataset == 'test') %>% dplyr::select(SS, grouping) %>% distinct()
+
+n_distinct(r$SS) / n_distinct(sites$SS)
+
+# List of all groupings
+sites %>% 
+  dplyr::filter(SS %in% r$SS) %>% 
+  dplyr::select(TGrouping, Sampling_grouping, Grouping_unit) %>% 
+  group_by(TGrouping, Sampling_grouping, Grouping_unit) %>% 
+  summarise(n = n()) %>% 
+  write.csv(x = ., file = 'SITable.csv',row.names = FALSE)
 
 # ------------------------------------ #
 #### SI Figure 1 - Predictor comparison plot ####
@@ -336,7 +572,7 @@ ggsave(filename = paste0(figure_path,'/','SIFigure1.png'),plot = g,width = 10,he
 
 
 # ------------------------------------ #
-#### SI Figure 2 - Effect size - Error ####
+#### SI Figure 3 - Effect size - Error ####
 # Plot the coefficient against the error
 # Show boxplot for each taxonomic group and biodiversity measure
 
@@ -366,7 +602,7 @@ g <- ggplot(results_predict, aes(x = estimate)) +
   facet_grid(metric~term,scales = 'free') +
   labs(x = 'Regression coefficient', y = 'Number of studies')
 g
-ggsave(filename = paste0(figure_path,'/','SIFigure2.png'),plot = g,width = 10,height = 12,dpi = 400)
+ggsave(filename = paste0(figure_path,'/','SIFigure3.png'),plot = g,width = 10,height = 12,dpi = 400)
 
 # ------------------------------------ #
 #### SI Figure 3 - Observed vs predicted ####

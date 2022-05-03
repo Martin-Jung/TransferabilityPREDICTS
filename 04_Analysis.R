@@ -14,13 +14,8 @@ library(rsample) # tidy resampling
 # Modelling
 library(lme4)
 library(broom)
-#library(brms);library(rstan)
-#library(tidybayes)
-#library(bayesplot)
-#library(shinystan)
 source('00_HelperFunction.R')
 # Hacks to make BRMS faster
-#rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores()-1)
 options(dplyr.summarise.inform = FALSE)
 # ------------------------------------ #

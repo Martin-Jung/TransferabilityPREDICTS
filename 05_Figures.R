@@ -79,7 +79,7 @@ rs <- readRDS('resSaves/MCD43A4_BRDF_center_computed_yearbefore.rds') %>%
 
 # ------------------------- #
 #### Figure 1 ####
-library(GGally)
+# library(GGally)
 library(MASS)
 # Get density of points in 2 dimensions.
 # @param x A numeric vector.
@@ -202,7 +202,7 @@ tmap::tmap_save(tm = gg,filename = 'figures/SIFigure2.png',
 xx <- bind_rows(
   results_predict1 %>% dplyr::select(term, metric, cv_smape) %>% dplyr::rename(smape = cv_smape) %>% 
     dplyr::mutate(method = 'Predictability') %>% distinct(),
-  results_transfer %>% dplyr::select(SS,metric, term,smape.avg) %>% dplyr::rename(smape = smape.avg) %>% 
+  results_transfer %>% dplyr::select(metric, term,smape.avg) %>% dplyr::rename(smape = smape.avg) %>% 
     dplyr::mutate(method = 'Transferability') %>% distinct()
 #  results_predict2 %>% dplyr::select(term,metric, smape) %>% 
 #    dplyr::mutate(method = 'Pooling')
@@ -225,6 +225,11 @@ g <- ggplot(xx, aes(x = fct_rev(metric), y = smape, fill = method)) +
   labs(x = '', y = 'sMAPE')
 g
 ggsave(plot = g,filename = paste0(figure_path,'/Figure2.png'),width = 10,height = 8)
+
+# Calculate summary results
+xx %>% dplyr::group_by(method,metric) %>% summarise(m = mean(smape,na.rm=T), s = sd(smape,na.rm=T))
+xx %>% dplyr::group_by(method, metric) %>% summarise(o50 = sum(smape>50,na.rm=T) / n() )
+
 
 #### Figure 3 - Taxonomic groups and predictability/transferability ####
 # Idea :
@@ -259,7 +264,9 @@ xx$metric <- factor(xx$metric,levels = c('SR','LA','PIE','SOR'),
 cols <- c("#7fbf7b","violet","#FF7F0E","#ffc425","#5D959A","tomato2","tan4","grey50")
 
 # Plot
-g <- ggplot(xx %>% dplyr::filter(term == 'Photosynthetic activity'),
+g <- ggplot(xx %>% 
+            # dplyr::filter(term == 'Spectral variability'),
+            dplyr::filter(term == 'Photosynthetic activity'),
             aes(x = Predictability, y = Transferability, colour = TGrouping, shape = metric)) +
   theme_classic(base_size = 20,base_family = 'Arial') +
     theme(panel.grid.major =  element_line(size = .5,colour='grey90')) +
@@ -274,32 +281,40 @@ g <- ggplot(xx %>% dplyr::filter(term == 'Photosynthetic activity'),
   xlim(c(-5,100)) + ylim(c(-5,100)) +
   labs(x = 'Predictability error (%)', y = 'Transferability error (%)')
 g
-ggsave(plot = g,filename = paste0(figure_path,'/Figure3.png'),width = 10,height = 10)
+ggsave(plot = g,filename = paste0(figure_path,'/Figure3_photosynth.png'),width = 10,height = 10)
+ggsave(plot = g,filename = paste0(figure_path,'/Figure3_spectralvar.png'),width = 10,height = 10)
 
-# boxplots above and to the right?
-gt1 <- ggplot(xx %>% dplyr::filter(term == 'Photosynthetic activity'),
-            aes(x = Predictability, fill = TGrouping)) + 
-  theme_void() + 
-  geom_boxplot(colour = 'white',outlier.shape = NA) +
-  xlim(c(-5,100)) +
-  scale_fill_manual(values = cols, guide = guide_legend(title = 'Taxonomic group')) + guides(fill = 'none')
-gt2 <- ggplot(xx %>% dplyr::filter(term == 'Photosynthetic activity'),
-             aes(y = Transferability, fill = TGrouping)) + 
-  theme_void() +
-  geom_boxplot(colour = 'white',outlier.shape = NA) +
-  ylim(c(-5,100)) +
-  scale_fill_manual(values = cols, guide = guide_legend(title = 'Taxonomic group')) + guides(fill = 'none')
+# Summaries
+xx %>% mutate(diff = Transferability - Predictability) %>% 
+  group_by(metric,TGrouping) %>% summarise(d=mean(diff)) %>% arrange(desc(d))
 
-gg <- cowplot::plot_grid(gt1,NULL,g + theme(legend.position = 'bottom'),gt2,
-                         align = 'hv',
-                   nrow = 2,rel_heights = c(0.1,0,1,0.1),rel_widths = c(0.1,0,1,0.1))
-cowplot::ggsave2(plot = gg,filename = paste0(figure_path,'/Figure3comb.png'),width = 10,height=10)
+xx %>% dplyr::filter(term == 'Photosynthetic activity') %>% 
+  # dplyr::group_by(TGrouping) %>%
+  dplyr::group_by(metric, TGrouping) %>%
+  summarise(mP = mean(Predictability),mT = mean(Transferability)) %>% arrange(desc(mT))
 
+# # boxplots above and to the right?
+# gt1 <- ggplot(xx %>% dplyr::filter(term == 'Photosynthetic activity'),
+#             aes(x = Predictability, fill = TGrouping)) + 
+#   theme_void() + 
+#   geom_boxplot(colour = 'white',outlier.shape = NA) +
+#   xlim(c(-5,100)) +
+#   scale_fill_manual(values = cols, guide = guide_legend(title = 'Taxonomic group')) + guides(fill = 'none')
+# gt2 <- ggplot(xx %>% dplyr::filter(term == 'Photosynthetic activity'),
+#              aes(y = Transferability, fill = TGrouping)) + 
+#   theme_void() +
+#   geom_boxplot(colour = 'white',outlier.shape = NA) +
+#   ylim(c(-5,100)) +
+#   scale_fill_manual(values = cols, guide = guide_legend(title = 'Taxonomic group')) + guides(fill = 'none')
+# 
+# gg <- cowplot::plot_grid(gt1,NULL,g + theme(legend.position = 'bottom'),gt2,
+#                          align = 'hv',
+#                    nrow = 2,rel_heights = c(0.1,0,1,0.1),rel_widths = c(0.1,0,1,0.1))
+# cowplot::ggsave2(plot = gg,filename = paste0(figure_path,'/Figure3comb.png'),width = 10,height=10)
+# 
 # ------------------------------------ #
 #### Figure 4 - Other variables explaining prediction error  ####
 # Idea:
-# use a regression tree to identify driving study-wide factors
-# Plot for both predictability and transferability
 
 mode <- function(codes){ 
   x <- names( which.max(table(codes)) ) 
@@ -370,26 +385,6 @@ df$Use_intensity <- factor(df$Use_intensity,levels = levels(sites$Use_intensity)
 df$metric <- factor(df$metric,levels = c('SR','LA','PIE','SOR'),
                     labels = c('Species richness', 'Species abundance', 'Assemblage evenness', 'Assemblage composition'))
 # ------- #
-# library(party)
-# library(partykit)
-# library(ggparty)
-# # Build conditional inference tree
-# mod_ct <- party::ctree(smape ~ TimeEffort + Max_linear_extent_metres + Biome + TGrouping + 
-#                          sampling_duration + newEffort * Grouping_unit + NSites +
-#                          EVI2_mean + SpecHetero_mean,
-#                        data = df %>% dplyr::filter(metric ==levels(df$metric)[1]),
-#                        controls = party::ctree_control()
-#                        )
-# # recursive partitioning of a generalized regression model
-# mod_ct <- glmtree(smape ~ 0 + metric | TimeEffort + Max_linear_extent_metres + Biome + 
-#                     newEffort * Grouping_unit + NSites + #Predominant_land_use +
-#                     EVI2_mean + sampling_duration ,#TransferGrouping,
-#                      data = df,
-#                     family = gaussian())
-# 
-# plot(mod_ct)
-
-# Do a different analysis and simply assess best predictors
 library(lme4)
 library(MuMIn)
 df2 <- df
@@ -470,6 +465,11 @@ results %>% dplyr::filter(method == "Predictability") %>% summarize(mm = mean(fu
 results %>% dplyr::filter(method == "Transferability") %>% summarize(mm = mean(full_r2_marg,na.rm=T),
                                                                     mc = mean(full_r2_cond,na.rm=T))
 
+results %>% dplyr::filter(method == "Transferability") %>% dplyr::group_by(variable) %>% summarise(m = mean(estimate)) %>% arrange((m))
+
+results %>% dplyr::filter(method == "Predictability") %>% dplyr::group_by(variable) %>% summarise(m = mean(estimate)) %>% arrange((m))
+
+
 # Format metric order
 results$metric <- factor(results$metric,levels = c('Species richness', 'Species abundance', 'Assemblage evenness', 'Assemblage composition'))
 # Format variable names
@@ -489,7 +489,9 @@ results$variable <- factor(results$variable,levels = c(
 ))
 
 # Build the plot
-g <- ggplot(results %>% dplyr::filter(method == "Predictability")#dplyr::filter(method == "Transferability") 
+g <- ggplot(results %>% 
+            # dplyr::filter(method == "Predictability")
+            dplyr::filter(method == "Transferability")
             %>% distinct(),
             aes(x = fct_rev(variable), y = estimate, ymin = `2.5 %`, ymax = `97.5 %`,
                     shape = fct_rev(metric) )) +
@@ -509,17 +511,8 @@ ggsave(plot = g,filename = paste0(figure_path,'/Figure4_transferability.png'),wi
 # ggsave(plot = g,filename = paste0(figure_path,'/Figure4_predictability.png'),width = 10,height = 10)
 
 # Formula extraction
-library(equatiomatic)
-equatiomatic::extract_eq(fit)
-
-# ------------------------------------ #
-#### Figure 5 - Transferability ####
-# Idea: Map on a continuoues surface the 
-# predictive horizon in 2d space, highlighting the area for 
-# robust predictions can be made
-# X - axis (photosynthetic avail)
-# y - axis (spectral heterogeneity)
-# z
+# library(equatiomatic)
+# equatiomatic::extract_eq(fit)
 
 # ------------------------------------ #
 #### SI Table 1 ####

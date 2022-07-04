@@ -13,6 +13,7 @@ library(colorspace)
 library(rsample) # tidy resampling
 # Modelling
 library(lme4)
+library(mgcv)
 library(broom)
 source('00_HelperFunction.R')
 # Hacks to make BRMS faster
@@ -68,7 +69,7 @@ cdis <- readRDS(paste0('resSaves/centroidDistance.rds')) %>%
 #### Figure 1 - Predictability with and without partial pooling ####
 # Idea:
 # Take site based measures and assess predictability 
-# within (a) each study and (b) within each study but with partial pooling
+# within (a) each study and (b) within each study but without partial pooling
 
 results <- data.frame()
 
@@ -84,26 +85,48 @@ for(study in unique(as.character(sites$SS)) ){
   # Combine with rs data
   rs.sub <- rs %>% dplyr::filter(SSBS %in% sites.sub$SSBS)
   if(nrow(rs.sub)==0) {next()}
+  
   sites.sub <- sites.sub %>% left_join(., rs, by = 'SSBS')
   
   # Formulate simple GLMs for each
-  fit.full.sr1 <- glm(Species_richness ~ EVI2_mean, family = poisson, data = sites.sub)
-  fit.full.sr2 <- glm(Species_richness ~ PCA_BRDF_meancentroid, family = poisson, data = sites.sub)
+  fit.full.sr1_lin <- gam(Species_richness ~ EVI2_mean, family = poisson, data = sites.sub)
+  fit.full.sr2_lin <- gam(Species_richness ~ PCA_BRDF_meancentroid, family = poisson, data = sites.sub)
+  if(nrow(sites.sub)>10){
+    fit.full.sr1_spl <- gam(Species_richness ~ s(EVI2_mean), family = poisson, data = sites.sub)
+    fit.full.sr2_spl <- gam(Species_richness ~ s(PCA_BRDF_meancentroid), family = poisson, data = sites.sub)
+  } else {
+    fit.full.sr1_spl <- NULL; fit.full.sr2_spl <- NULL
+  }
+  # fit.full.sr1 <- glm(Species_richness ~ EVI2_mean, family = poisson, data = sites.sub)
+  # fit.full.sr2 <- glm(Species_richness ~ PCA_BRDF_meancentroid, family = poisson, data = sites.sub)
   
   if(!all(is.na(sites.sub$logabund))){
-    fit.full.la1 <- glm(logabund ~ EVI2_mean, family = gaussian, data = sites.sub)
-    fit.full.la2 <- glm(logabund ~ PCA_BRDF_meancentroid, family = gaussian, data = sites.sub)
-  } else {fit.full.la1 <- NULL; fit.full.la2 <- NULL}
+    # fit.full.la1 <- glm(logabund ~ EVI2_mean, family = gaussian, data = sites.sub)
+    # fit.full.la2 <- glm(logabund ~ PCA_BRDF_meancentroid, family = gaussian, data = sites.sub)
+    fit.full.la1_lin <- gam(logabund ~ EVI2_mean, family = gaussian, data = sites.sub)
+    fit.full.la2_lin <- gam(logabund ~ PCA_BRDF_meancentroid, family = gaussian, data = sites.sub)
+    if(nrow(sites.sub)>10){
+      fit.full.la2_spl <- gam(logabund ~ s(EVI2_mean), family = gaussian, data = sites.sub)
+      fit.full.la2_spl <- gam(logabund ~ s(PCA_BRDF_meancentroid), family = gaussian, data = sites.sub)
+    } else {
+      fit.full.la2_spl <- fit.full.la2_spl <- NULL
+    }
+  } else {fit.full.la1_lin <- fit.full.la1_lin <- fit.full.la2_spl <- fit.full.la2_spl <- NULL}
   
   if(!all(is.na(sites.sub$asinPIE))){
     # Ocassionally PIE can't be calculated
-    fit.full.pie1 <- glm(asinPIE ~ EVI2_mean, family = gaussian, data = sites.sub)
-    fit.full.pie2 <- glm(asinPIE ~ PCA_BRDF_meancentroid, family = gaussian, data = sites.sub)
-    if(is.na(coef(fit.full.pie1)[2])){ fit.full.pie1 <- NULL; fit.full.pie2 <- NULL }
+    fit.full.pie1_lin <- gam(asinPIE ~ EVI2_mean, family = gaussian, data = sites.sub)
+    fit.full.pie2_lin <- gam(asinPIE ~ PCA_BRDF_meancentroid, family = gaussian, data = sites.sub)
+    if(nrow(sites.sub)>10){
+     fit.full.pie1_spl <- gam(asinPIE ~ s(EVI2_mean), family = gaussian, data = sites.sub)
+      fit.full.pie2_spl <- gam(asinPIE ~ s(PCA_BRDF_meancentroid), family = gaussian, data = sites.sub)
+    } else {
+      fit.full.pie1_spl <- fit.full.pie2_spl <- NULL
+    }
+    if(is.na(coef(fit.full.pie1_lin)[2])){ fit.full.pie1_lin <- fit.full.pie2_lin <- NULL }
   } else {
-    fit.full.pie1 <- NULL; fit.full.pie2 <- NULL
+    fit.full.pie1_lin <- fit.full.pie2_lin <- fit.full.pie1_spl <- fit.full.pie2_spl <- NULL
   }
-  
   
   if(!is.null(sites.dis.sub)){
     require(reshape2)
@@ -119,23 +142,23 @@ for(study in unique(as.character(sites$SS)) ){
     
     # Calculate for each pairing the respective distance between centroids
     # Make data.frame and loop through each pairing
-    rs.dis1 <- as.matrix( dist(rs.sub$PCA_BRDF_centroid,method = 'manhattan',diag=F,upper=F) )
+    # And for mean EVI 2
+    rs.dis1 <- as.matrix( dist(rs.sub$EVI2_mean,method = 'manhattan',diag=F,upper=F) )
     diag(rs.dis1) <- NA; rs.dis1[upper.tri(rs.dis1)] <- NA
     rownames(rs.dis1) <- as.character(rs.sub$SSBS); colnames(rs.dis1) <- as.character(rs.sub$SSBS)
     rs.dis1 <- reshape2::melt(rs.dis1) %>% tidyr::drop_na() %>% dplyr::rename(rsdis = value)
-    
-    # And for mean EVI 2
-    rs.dis2 <- as.matrix( dist(rs.sub$EVI2_mean,method = 'manhattan',diag=F,upper=F) )
+
+    rs.dis2 <- as.matrix( dist(rs.sub$PCA_BRDF_centroid,method = 'manhattan',diag=F,upper=F) )
     diag(rs.dis2) <- NA; rs.dis2[upper.tri(rs.dis2)] <- NA
     rownames(rs.dis2) <- as.character(rs.sub$SSBS); colnames(rs.dis2) <- as.character(rs.sub$SSBS)
     rs.dis2 <- reshape2::melt(rs.dis2) %>% tidyr::drop_na() %>% dplyr::rename(rsdis = value)
-    
+        
     if(nrow(rs.dis1)==0 | nrow(rs.dis2) == 0){
-      fit.full.dis1 <- NULL; fit.full.dis2 <- NULL
+      fit.full.dis1_1 <- fit.full.dis2_1 <- fit.full.dis2_2 <- fit.full.dis1_2 <- NULL
     } else {
       # Join
-      df.full1 <- full_join(df.dis, rs.dis1, by = c('Var1','Var2')) %>% tidyr::drop_na()
-      df.full2 <- full_join(df.dis, rs.dis2, by = c('Var1','Var2')) %>% tidyr::drop_na()
+      df.full1 <- full_join(df.dis, rs.dis1, by = c('Var1','Var2')) %>% tidyr::drop_na() #EVI
+      df.full2 <- full_join(df.dis, rs.dis2, by = c('Var1','Var2')) %>% tidyr::drop_na() # BRDF
       # Join in distance
       df.full1 <- dplyr::left_join(df.full1, pdis %>% dplyr::filter(SS == study) %>% 
                                      dplyr::mutate(distance = normalize(distance)), by = c('Var1','Var2'))
@@ -144,8 +167,14 @@ for(study in unique(as.character(sites$SS)) ){
       assert_that(nrow(df.full1)>0,
                   all( between(df.full1$sr,0,1) ))
       # Fit
-      fit.full.dis1 <- glm(sr.n ~ distance + rsdis,data = df.full1,family = gaussian())
-      fit.full.dis2 <- glm(sr.n ~ distance + rsdis,data = df.full2,family = gaussian())
+      fit.full.dis1_lin <- gam(sr.n ~ distance + rsdis,data = df.full1,family = gaussian())
+      fit.full.dis2_lin <- gam(sr.n ~ distance + rsdis,data = df.full2,family = gaussian())
+      if(nrow(df.full1)>10){
+        fit.full.dis1_spl <- gam(sr.n ~ distance + s(rsdis),data = df.full1,family = gaussian())
+        fit.full.dis2_spl <- gam(sr.n ~ distance + s(rsdis),data = df.full2,family = gaussian())
+      } else {
+        fit.full.dis1_spl <- fit.full.dis2_spl <- NULL
+      }
     }
   }
   
@@ -154,66 +183,91 @@ for(study in unique(as.character(sites$SS)) ){
     if(is.null(model)) {
       return(data.frame())
     }
-    cc <- broom::tidy(model)[-1,] # Get model coefficients without intercept
-    cc$full_r2 <- performance::r2_nagelkerke(model)
-    td <- data.frame(observed =  model$data[, all.vars(model$formula)[1]],
-                     predicted =  predict(model,newdata = model$data,type = 'response')) %>% tidyr::drop_na()
-    
-    cc$full_mape <- mape(td$observed,td$predicted)
-    cc$full_smape <- mape(td$observed,td$predicted,type = 'symetric')
-    # --- #
-    
-    # Simple cross validation script for glm
-    cvfit <- function(model,n=10){
+    # Check whether one or models are NULL, if so ignore
+    if(all(sapply(model, is.null))) return(data.frame())
+    if(any(sapply(model, is.null))){
+      model <- model[which(!sapply(model, is.null))]
+    } 
+    # Simple cross validation script for gam
+    cvfit <- function(mod,n=10){
       o <- data.frame()
       for(i in 1:n){
         # Do k-fold Cv
-        x <- model$data[,all.vars(model$formula)] %>% tidyr::drop_na()
+        x <- mod$model[,all.vars(mod$formula)] %>% tidyr::drop_na()
         
         # Select at random, but weighted by distance
-        try( train <- x[sample(1:nrow(x),size = round(nrow(x)*0.66),prob = model$data$distance[as.numeric(rownames(x))] ),],silent = T )
+        try( train <- x[sample(1:nrow(x),size = round(nrow(x)*0.66),prob = mod$data$distance[as.numeric(rownames(x))] ),],silent = T )
         if(!exists('train')) { train <- x[sample(1:nrow(x),size = round(nrow(x)*0.66) ),]  }
         test <- x[which(rownames(x) %notin% rownames(train)),]
         
         assert_that(nrow(test)+nrow(train)==nrow(x))
         if(nrow(train)<3) {next()}
-        # Retrain model
-        new <- glm(model$formula, data = train, family = model$family)
+        
+        # Retrain model(s)
+        new <- try({ gam(mod$formula, data = train, family = mod$family)},silent = TRUE)
+        if(inherits(new, "try-error")) next()
+        
+        # Nonlinear?
+        is_smooth <- ifelse(length(grep("s\\(", names(coef(new))))>0, TRUE, FALSE)
         
         o <- bind_rows(o,
-                       data.frame(i = i,type = 'mape',value = mape(observed = purrr::discard(test[, all.vars(model$formula)[1]],is.na),
-                                                                   predicted = purrr::discard(predict(new,newdata = test,type = 'response'),is.na) )
+                       data.frame(i = i,type = 'mape',is_smooth = is_smooth,
+                                  value = mape(observed = purrr::discard(test[, all.vars(mod$formula)[1]],is.na),
+                                  predicted = purrr::discard(predict(new,newdata = test,type = 'response'),is.na) )
                                   ),
-                       data.frame(i = i,type = 'smape',value = mape(observed = purrr::discard(test[, all.vars(model$formula)[1]],is.na),
-                                                                    predicted = purrr::discard(predict(new,newdata = test,type = 'response'),is.na),type = 'sym') )
+                       data.frame(i = i,type = 'smape',is_smooth = is_smooth,
+                                  value = mape(observed = purrr::discard(test[, all.vars(mod$formula)[1]],is.na),
+                                  predicted = purrr::discard(predict(new,newdata = test,type = 'response'),is.na),type = 'sym') )
         )
         rm(train,test)
       }
      
      if(nrow(o)>0){
        # Average
-       o %>% group_by(type) %>% summarise(avg = mean(value), sd = sd(value)) %>% ungroup()
-     } else { data.frame(type = NA, avg = NA, sd = NA)}
+       o %>% group_by(type,is_smooth) %>% summarise(avg = mean(value), sd = sd(value)) %>% ungroup()
+     } else { data.frame()}
     }
-    cv <- cvfit(model)
-    # Add to results output
+    cv <- data.frame()
+    for(i in 1:length(model)){
+      cv <- rbind(cv, cvfit(model[[i]]) )
+    }
+    # Get best model out of the two supplied ones
+    check <- cv$is_smooth[which(cv$type=="smape")][which.min(cv$avg[which(cv$type=="smape")])]
+    if(check) bestmodel <- model[[2]] else bestmodel <- model[[1]]
+    cv <- subset(cv, is_smooth == check)
+    
+    # Get model coefficients without intercept
+    if(check){
+      cc <- broom::tidy(bestmodel)[-1,]
+    } else {
+      cc <- broom::tidy(bestmodel,parametric = TRUE)[-1,]
+    }
+    cc$is_smooth <- check
+    cc$full_r2 <- performance::r2_nagelkerke(bestmodel)
+    td <- data.frame(observed =  bestmodel$model[, all.vars(bestmodel$formula)[1]],
+                     predicted =  predict(bestmodel,newdata = bestmodel$model,type = 'response')) %>% tidyr::drop_na()
+    
+    cc$full_mape <- mape(td$observed,td$predicted)
+    cc$full_smape <- mape(td$observed,td$predicted,type = 'symetric')
+    # --- #
+    # Add cross-validated data to results output
     cc$cv_mape <- cv$avg[cv$type=='mape']
     cc$cv_smape <- cv$avg[cv$type=='smape']
-    
+    try({rm(cv,td, bestmodel)},silent = T)
     return(cc)
   }
   
   results <- dplyr::bind_rows(
     results,
     bind_rows(
-      assessPredictability(fit.full.sr1) %>% dplyr::mutate(SS = study,metric = 'SR'),
-      assessPredictability(fit.full.sr2) %>% dplyr::mutate(SS = study,metric = 'SR'),
-      assessPredictability(fit.full.la1) %>% dplyr::mutate(SS = study,metric = 'LA'),
-      assessPredictability(fit.full.la2) %>% dplyr::mutate(SS = study,metric = 'LA'),
-      assessPredictability(fit.full.pie1) %>% dplyr::mutate(SS = study,metric = 'PIE'),
-      assessPredictability(fit.full.pie2) %>% dplyr::mutate(SS = study,metric = 'PIE'),
-      assessPredictability(fit.full.dis1) %>% dplyr::mutate(SS = study,metric = 'SOR') %>% mutate(term = 'PCAcent'),
-      assessPredictability(fit.full.dis2) %>% dplyr::mutate(SS = study,metric = 'SOR') %>% mutate(term = 'EVIdis')
+      assessPredictability(list(fit.full.sr1_lin,fit.full.sr1_spl)) %>% dplyr::mutate(SS = study,metric = 'SR'),
+      assessPredictability(list(fit.full.sr2_lin,fit.full.sr2_spl)) %>% dplyr::mutate(SS = study,metric = 'SR'),
+      assessPredictability(list(fit.full.la1_lin,fit.full.la2_spl)) %>% dplyr::mutate(SS = study,metric = 'LA'),
+      assessPredictability(list(fit.full.la2_lin,fit.full.la2_spl)) %>% dplyr::mutate(SS = study,metric = 'LA'),
+      assessPredictability(list(fit.full.pie1_lin,fit.full.pie1_spl)) %>% dplyr::mutate(SS = study,metric = 'PIE'),
+      assessPredictability(list(fit.full.pie2_lin,fit.full.pie2_spl)) %>% dplyr::mutate(SS = study,metric = 'PIE'),
+      assessPredictability(list(fit.full.dis1_lin,fit.full.dis1_spl)) %>% dplyr::mutate(SS = study,metric = 'SOR') %>% mutate(term = 'EVIdis') ,
+      assessPredictability(list(fit.full.dis2_lin,fit.full.dis2_spl)) %>% dplyr::mutate(SS = study,metric = 'SOR') %>% mutate(term = 'PCAcent')
     )
   )
   # Clean up
@@ -550,6 +604,13 @@ for(gg in unique(sites.transf$TransferGrouping)){
 # Save results
 saveRDS(results,paste0(output_path, '/results_transferability.rds'))
 
+#### Figure for reviewers ####
+# Assess correlations between the several 
+
+sub <- subset(rs, between(EVI2_mean, 0,1) )
+plot(EVI2_min~EVI2_mean, data = sub)
+
+cor.test(sub$EVI2_mean, sub$NDWI_mean)
 
 #### Testing ####
 

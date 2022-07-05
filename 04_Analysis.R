@@ -81,19 +81,24 @@ for(study in unique(as.character(sites$SS)) ){
   sites.sub <- subset(sites, SS == study)
   sites.sub <- dplyr::left_join(sites.sub, cdis, by = c('SS','SSBS'))
   if(study %in% names(sites.dis)) {sites.dis.sub <- sites.dis[[study]]} else {sites.dis.sub <- NULL}
+  if(nrow(sites.sub)<4) next() # No point making any inferences on this little data
   
   # Combine with rs data
   rs.sub <- rs %>% dplyr::filter(SSBS %in% sites.sub$SSBS)
   if(nrow(rs.sub)==0) {next()}
   
   sites.sub <- sites.sub %>% left_join(., rs, by = 'SSBS')
-  
+  if(sum(!is.na(sites.sub$EVI2_mean)) < 4) next()  
+  if(sum(!is.na(sites.sub$PCA_BRDF_meancentroid)) < 4) next()
+    
   # Formulate simple GLMs for each
   fit.full.sr1_lin <- gam(Species_richness ~ EVI2_mean, family = poisson, data = sites.sub)
   fit.full.sr2_lin <- gam(Species_richness ~ PCA_BRDF_meancentroid, family = poisson, data = sites.sub)
   if(nrow(sites.sub)>10){
-    fit.full.sr1_spl <- gam(Species_richness ~ s(EVI2_mean), family = poisson, data = sites.sub)
-    fit.full.sr2_spl <- gam(Species_richness ~ s(PCA_BRDF_meancentroid), family = poisson, data = sites.sub)
+    fit.full.sr1_spl <- try({gam(Species_richness ~ s(EVI2_mean), family = poisson, data = sites.sub)},silent = TRUE)
+    if(!inherits(fit.full.sr1_spl, "try-error")){
+      fit.full.sr2_spl <- gam(Species_richness ~ s(PCA_BRDF_meancentroid), family = poisson, data = sites.sub)
+    } else { fit.full.sr1_spl <- NULL; fit.full.sr2_spl <- NULL }
   } else {
     fit.full.sr1_spl <- NULL; fit.full.sr2_spl <- NULL
   }
@@ -106,20 +111,24 @@ for(study in unique(as.character(sites$SS)) ){
     fit.full.la1_lin <- gam(logabund ~ EVI2_mean, family = gaussian, data = sites.sub)
     fit.full.la2_lin <- gam(logabund ~ PCA_BRDF_meancentroid, family = gaussian, data = sites.sub)
     if(nrow(sites.sub)>10){
-      fit.full.la2_spl <- gam(logabund ~ s(EVI2_mean), family = gaussian, data = sites.sub)
-      fit.full.la2_spl <- gam(logabund ~ s(PCA_BRDF_meancentroid), family = gaussian, data = sites.sub)
+      fit.full.la2_spl <- try({gam(logabund ~ s(EVI2_mean), family = gaussian, data = sites.sub)})
+      if(!inherits(fit.full.la2_spl, "try-error")){
+        fit.full.la2_spl <- gam(logabund ~ s(PCA_BRDF_meancentroid), family = gaussian, data = sites.sub)
+      } else { fit.full.la2_spl <- fit.full.la2_spl <- NULL }
     } else {
       fit.full.la2_spl <- fit.full.la2_spl <- NULL
     }
   } else {fit.full.la1_lin <- fit.full.la1_lin <- fit.full.la2_spl <- fit.full.la2_spl <- NULL}
   
-  if(!all(is.na(sites.sub$asinPIE))){
-    # Ocassionally PIE can't be calculated
+  if(sum(!is.na(sites.sub$asinPIE))>4 ){
+    # Occasionally PIE can't be calculated
     fit.full.pie1_lin <- gam(asinPIE ~ EVI2_mean, family = gaussian, data = sites.sub)
     fit.full.pie2_lin <- gam(asinPIE ~ PCA_BRDF_meancentroid, family = gaussian, data = sites.sub)
     if(nrow(sites.sub)>10){
-     fit.full.pie1_spl <- gam(asinPIE ~ s(EVI2_mean), family = gaussian, data = sites.sub)
-      fit.full.pie2_spl <- gam(asinPIE ~ s(PCA_BRDF_meancentroid), family = gaussian, data = sites.sub)
+     fit.full.pie1_spl <- try({gam(asinPIE ~ s(EVI2_mean), family = gaussian, data = sites.sub)})
+     if(!inherits(fit.full.pie1_spl, "try-error")){
+       fit.full.pie2_spl <- gam(asinPIE ~ s(PCA_BRDF_meancentroid), family = gaussian, data = sites.sub)
+     } else { fit.full.pie1_spl <- fit.full.pie2_spl <- NULL }
     } else {
       fit.full.pie1_spl <- fit.full.pie2_spl <- NULL
     }
@@ -170,8 +179,10 @@ for(study in unique(as.character(sites$SS)) ){
       fit.full.dis1_lin <- gam(sr.n ~ distance + rsdis,data = df.full1,family = gaussian())
       fit.full.dis2_lin <- gam(sr.n ~ distance + rsdis,data = df.full2,family = gaussian())
       if(nrow(df.full1)>10){
-        fit.full.dis1_spl <- gam(sr.n ~ distance + s(rsdis),data = df.full1,family = gaussian())
-        fit.full.dis2_spl <- gam(sr.n ~ distance + s(rsdis),data = df.full2,family = gaussian())
+        fit.full.dis1_spl <- try({gam(sr.n ~ distance + s(rsdis),data = df.full1,family = gaussian())})
+        if(!inherits(fit.full.dis1_spl, "try-error")){
+          fit.full.dis2_spl <- gam(sr.n ~ distance + s(rsdis),data = df.full2,family = gaussian())
+        } else { fit.full.dis1_spl <- fit.full.dis2_spl <- NULL }
       } else {
         fit.full.dis1_spl <- fit.full.dis2_spl <- NULL
       }
@@ -213,11 +224,11 @@ for(study in unique(as.character(sites$SS)) ){
         o <- bind_rows(o,
                        data.frame(i = i,type = 'mape',is_smooth = is_smooth,
                                   value = mape(observed = purrr::discard(test[, all.vars(mod$formula)[1]],is.na),
-                                  predicted = purrr::discard(predict(new,newdata = test,type = 'response'),is.na) )
+                                  predicted = purrr::discard(predict(new, newdata = test,type = 'response'),is.na) )
                                   ),
                        data.frame(i = i,type = 'smape',is_smooth = is_smooth,
                                   value = mape(observed = purrr::discard(test[, all.vars(mod$formula)[1]],is.na),
-                                  predicted = purrr::discard(predict(new,newdata = test,type = 'response'),is.na),type = 'sym') )
+                                  predicted = purrr::discard(predict(new, newdata = test,type = 'response'),is.na),type = 'sym') )
         )
         rm(train,test)
       }
@@ -231,6 +242,7 @@ for(study in unique(as.character(sites$SS)) ){
     for(i in 1:length(model)){
       cv <- rbind(cv, cvfit(model[[i]]) )
     }
+    if(nrow(cv)==0) return(data.frame())
     # Get best model out of the two supplied ones
     check <- cv$is_smooth[which(cv$type=="smape")][which.min(cv$avg[which(cv$type=="smape")])]
     if(check) bestmodel <- model[[2]] else bestmodel <- model[[1]]
